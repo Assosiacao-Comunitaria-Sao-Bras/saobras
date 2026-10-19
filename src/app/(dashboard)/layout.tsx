@@ -1,16 +1,43 @@
 import { Sidebar } from "@/components/layout/Sidebar";
+import { createClient } from "@/lib/supabase/server";
 
-export default function DashboardLayout({
+export const revalidate = 0;
+
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let nomeOperador = "";
+
+  if (user) {
+    const { data: operador } = await supabase
+      .from("operadores")
+      .select("nome")
+      .eq("email", user.email ?? "")
+      .maybeSingle();
+
+    nomeOperador =
+      operador?.nome?.trim() ||
+      user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
+      user.email ||
+      "Operador";
+  }
+
   return (
     <div className="app-shell flex min-h-screen bg-[#f3f8ff]">
       <Sidebar />
 
       <div className="app-workspace min-w-0 flex-1">
         <header className="app-topbar sticky top-0 z-10 flex h-[66px] items-center justify-between gap-4 border-b border-blue-100 bg-white/95 px-5 backdrop-blur sm:px-7 lg:px-9">
+          {/* Identificação do Polo */}
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2d98eb] text-white">
               <svg
@@ -33,15 +60,26 @@ export default function DashboardLayout({
               <p className="truncate text-xs font-semibold text-[#2d98eb]">
                 POLO DE CIÊNCIA E TECNOLOGIA
               </p>
+
               <p className="truncate text-sm font-bold text-[#202044]">
                 São Brás · Feira de Santana
               </p>
             </div>
           </div>
 
-          <div className="hidden items-center gap-2 rounded-full bg-[#f2f7ff] px-3 py-2 text-xs font-medium text-slate-500 sm:flex">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            Sistema de gestão
+          {/* Operador conectado */}
+          <div
+            className="flex max-w-[55%] shrink-0 items-center gap-2 rounded-full border border-blue-100 bg-[#f2f7ff] px-3 py-2 sm:px-4"
+            title={`Operador conectado: ${nomeOperador || "Operador"}`}
+          >
+            <span
+              className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
+              aria-label="Conectado"
+            />
+
+            <span className="max-w-[220px] truncate text-xs font-semibold text-[#202044] sm:max-w-[320px] sm:text-sm">
+              {nomeOperador || "Operador"}
+            </span>
           </div>
         </header>
 
