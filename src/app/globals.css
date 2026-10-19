@@ -2,11 +2,11 @@
 @import "tailwindcss";
 
 :root {
-  --brand-blue: #2d98eb;
-  --brand-blue-dark: #1269bd;
+  --brand-blue: #1674d2;
+  --brand-blue-dark: #0756a8;
   --brand-blue-soft: #eaf5ff;
   --brand-navy: #123d72;
-  --brand-gold: #f4c430;
+  --brand-gold: #ffcf32;
   --page-bg: #f3f8ff;
   --surface: #ffffff;
   --ink: #18345f;
@@ -31,6 +31,7 @@ body {
   font-size: 14px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
@@ -46,41 +47,27 @@ h4 {
   letter-spacing: -0.025em;
 }
 
-h1 { font-weight: 800; }
-h2 { font-weight: 750; }
-h3 { font-weight: 700; }
+h1 {
+  font-weight: 800;
+}
+
+h2 {
+  font-weight: 750;
+}
+
+h3 {
+  font-weight: 700;
+}
+
+/* Estrutura principal */
 
 .app-shell {
   min-height: 100vh;
 }
 
-.app-sidebar {
-  position: sticky;
-  z-index: 20;
-  background: linear-gradient(
-    180deg,
-    #2d98eb 0%,
-    #2185d7 52%,
-    #176bb9 100%
-  );
-  box-shadow: 3px 0 16px rgba(26, 91, 159, 0.10);
-}
-
-.sidebar-glow {
-  background: rgba(90, 190, 255, 0.18);
-  filter: blur(50px);
-}
-
-.app-sidebar nav {
-  scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
-}
-
-.app-sidebar nav a {
-  text-decoration: none;
-}
-
 .app-workspace {
   min-width: 0;
+  flex: 1;
 }
 
 .app-topbar {
@@ -96,7 +83,103 @@ h3 { font-weight: 700; }
   min-height: 100%;
 }
 
-/* Cartões discretos */
+/* Barra lateral azul */
+
+.app-sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  width: 248px;
+  min-width: 248px;
+  height: 100vh;
+  min-height: 650px;
+  flex-shrink: 0;
+  background: linear-gradient(
+    180deg,
+    #1478dc 0%,
+    #116bc5 48%,
+    #0756a8 100%
+  );
+  box-shadow: 3px 0 16px rgba(12, 61, 123, 0.12);
+  color: #ffffff;
+}
+
+/* Brilho sutil no fundo */
+
+.sidebar-glow {
+  background: rgba(90, 190, 255, 0.18);
+  filter: blur(50px);
+}
+
+/* Rolagem da navegação */
+
+.app-sidebar nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
+}
+
+.app-sidebar nav a {
+  color: #ffffff;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Mantém os ícones brancos e nítidos */
+
+.app-sidebar nav svg,
+.app-sidebar button svg {
+  flex-shrink: 0;
+}
+
+/* Transições suaves no menu */
+
+.app-sidebar nav a,
+.app-sidebar button {
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+/* Destaque do item selecionado */
+
+.app-sidebar nav a[aria-current="page"] {
+  background-color: #3198e8;
+  color: #ffffff;
+}
+
+/* Hover nos itens não selecionados */
+
+.app-sidebar nav a:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.app-sidebar nav a[aria-current="page"]:hover {
+  background-color: #3198e8;
+}
+
+/* Botões gerais */
+
+button {
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(45, 152, 235, 0.3);
+  outline-offset: 3px;
+}
+
+/* Cartões das páginas */
+
 .app-main .bg-white.rounded-lg,
 .app-main .bg-white.rounded-xl,
 .app-main .bg-white.rounded-2xl {
@@ -113,22 +196,25 @@ h3 { font-weight: 700; }
 }
 
 /* Formulários */
+
 .app-main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 .app-main select,
 .app-main textarea {
   max-width: 100%;
   border-color: #d7e5f5;
   border-radius: 8px;
-  background: #fff;
+  background: #ffffff;
   color: var(--ink);
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .app-main input:focus,
 .app-main select:focus,
 .app-main textarea:focus {
   outline: none;
-  border-color: var(--brand-blue);
+  border-color: #2d98eb;
   box-shadow: 0 0 0 3px rgba(45, 152, 235, 0.12);
 }
 
@@ -139,27 +225,11 @@ textarea::placeholder {
 
 input[type="checkbox"],
 input[type="radio"] {
-  accent-color: var(--brand-blue);
-}
-
-/* Botões */
-button {
-  cursor: pointer;
-  transition: background-color 0.18s ease, color 0.18s ease;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-button:focus-visible,
-a:focus-visible {
-  outline: 3px solid rgba(45, 152, 235, 0.3);
-  outline-offset: 3px;
+  accent-color: #1674d2;
 }
 
 /* Tabelas */
+
 .app-main table {
   width: 100%;
   border-collapse: separate;
@@ -186,7 +256,8 @@ a:focus-visible {
   background: #f4f9ff;
 }
 
-/* Rolagem */
+/* Rolagem geral */
+
 * {
   scrollbar-width: thin;
   scrollbar-color: #c6d9ee transparent;
@@ -202,18 +273,25 @@ a:focus-visible {
   border-radius: 99px;
 }
 
-/* Celulares */
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Telas menores */
+
 @media (max-width: 760px) {
   body {
     font-size: 13px;
   }
 
   .app-sidebar {
-    width: 76px;
+    width: 248px;
+    min-width: 248px;
     flex-shrink: 0;
   }
 
   .app-main {
+    min-width: 0;
     padding-left: 12px !important;
     padding-right: 12px !important;
   }
@@ -223,11 +301,15 @@ a:focus-visible {
   }
 }
 
+/* Acessibilidade: reduz animações quando solicitado */
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
