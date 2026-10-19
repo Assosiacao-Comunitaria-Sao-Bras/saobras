@@ -36,50 +36,51 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="app-sidebar sticky top-0 flex h-screen w-[248px] shrink-0 flex-col overflow-hidden text-white">
-      <div className="sidebar-glow pointer-events-none absolute -right-20 top-36 h-64 w-64 rounded-full" />
+    <aside className="app-sidebar relative sticky top-0 z-20 flex h-screen min-h-[650px] w-[248px] shrink-0 flex-col overflow-hidden text-white">
+      {/* Brilho discreto do fundo */}
+      <div className="sidebar-glow pointer-events-none absolute -right-24 top-48 h-64 w-64 rounded-full" />
 
-      <div className="relative border-b border-white/15 px-4 pb-4 pt-4">
-        <div className="flex min-h-[60px] items-center justify-center rounded-lg bg-white px-3 py-2">
+      {/* Logos e identificação */}
+      <div className="relative shrink-0 px-[29px] pt-[23px]">
+        <div className="flex h-[68px] items-center justify-center">
           <Image
             src="/logos/prefeitura-feira.png"
             alt="Prefeitura de Feira de Santana"
             width={220}
-            height={80}
+            height={90}
             priority
-            className="h-auto max-h-[45px] w-full max-w-[150px] object-contain"
+            className="h-auto max-h-[68px] w-full max-w-[190px] object-contain brightness-0 invert"
           />
         </div>
 
-        <div className="mt-2 flex min-h-[43px] items-center justify-center px-3 py-1">
+        <div className="mt-[17px] flex h-[53px] items-center justify-center">
           <Image
             src="/logos/fundacao-sem-fundo.png"
             alt="Fundação Municipal Egberto Costa"
-            width={160}
-            height={60}
-            className="h-auto max-h-[30px] w-full max-w-[110px] object-contain opacity-70"
+            width={220}
+            height={75}
+            priority
+            className="h-auto max-h-[49px] w-full max-w-[190px] object-contain brightness-0 invert"
           />
         </div>
 
-        <div className="mt-3 flex items-center gap-2 px-1">
-          <span className="h-2 w-2 shrink-0 rounded-full bg-[#f4c430]" />
-          <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-white">
+        <div className="mt-[17px] border-t border-white/20" />
+
+        <div className="flex h-[51px] items-center gap-[10px]">
+          <span className="h-[11px] w-[11px] shrink-0 rounded-full bg-[#ffcf32]" />
+          <span className="whitespace-nowrap text-[12px] font-bold uppercase tracking-[0.01em]">
             Sistema do Polo Digital
           </span>
         </div>
       </div>
 
-      <div className="relative px-5 pb-3 pt-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/75">
-          Menu principal
-        </p>
-      </div>
-
-      <nav className="relative flex-1 space-y-2 overflow-y-auto px-3 pb-5">
+      {/* Navegação */}
+      <nav className="relative flex-1 space-y-[5px] overflow-y-auto overflow-x-hidden px-[12px] pb-4">
         {menuItems.map((item) => {
           const active =
             pathname === item.href ||
             pathname.startsWith(`${item.href}/`);
+
           const Icon = item.icon;
 
           return (
@@ -87,27 +88,26 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               aria-current={active ? "page" : undefined}
-              className={`group relative flex min-h-[48px] items-center gap-3 rounded-lg px-3 py-3 text-[13px] transition-colors ${
+              className={`group relative flex h-[48px] min-h-[48px] items-center gap-[13px] rounded-[9px] px-[19px] text-[13px] transition-colors duration-200 ${
                 active
-                  ? "bg-white/20 font-bold text-white ring-1 ring-white/15"
-                  : "font-medium text-white/90 hover:bg-white/10 hover:text-white"
+                  ? "bg-[#3198e8] font-semibold text-white"
+                  : "font-medium text-white hover:bg-white/10"
               }`}
             >
               {active && (
-                <span className="absolute bottom-2 left-0 top-2 w-[3px] rounded-r bg-[#f4c430]" />
+                <span className="absolute bottom-0 left-0 top-0 w-[4px] rounded-l-[9px] bg-[#ffcf32]" />
               )}
 
-              <span
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                  active
-                    ? "bg-white/15 text-[#ffe16b]"
-                    : "text-white/90 group-hover:bg-white/10"
-                }`}
-              >
-                <Icon size={18} strokeWidth={2} />
+              <span className="flex w-[22px] shrink-0 items-center justify-center">
+                <Icon
+                  size={23}
+                  strokeWidth={1.9}
+                  className="text-white"
+                  aria-hidden="true"
+                />
               </span>
 
-              <span className="min-w-0 flex-1 leading-snug">
+              <span className="whitespace-nowrap leading-none">
                 {item.name}
               </span>
             </Link>
@@ -115,27 +115,36 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="relative border-t border-white/15 px-3 pb-3 pt-3">
+      {/* Rodapé */}
+      <div className="relative shrink-0 px-[12px] pb-[65px]">
+        <div className="border-t border-white/20" />
+
         <button
+          type="button"
           onClick={handleLogout}
-          className="flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-semibold text-white/90 hover:bg-white/10"
+          className="mt-[13px] flex h-[47px] w-full items-center gap-[13px] rounded-[9px] px-[19px] text-[13px] font-medium text-white transition-colors hover:bg-white/10"
         >
-          <LogOut size={18} />
-          <span>Sair do sistema</span>
+          <span className="flex w-[22px] shrink-0 items-center justify-center">
+            <LogOut size={22} strokeWidth={1.9} />
+          </span>
+          <span className="whitespace-nowrap">Sair do sistema</span>
         </button>
 
-        <div className="mt-3 px-3 pb-1">
-          <p className="text-[10px] leading-relaxed text-white/75">
+        <div className="mt-[24px] px-[17px]">
+          <p className="text-[10px] leading-[15px] text-white/75">
             Prefeitura de Feira de Santana
           </p>
-          <p className="text-[10px] leading-relaxed text-white">
+
+          <p className="text-[10px] leading-[15px] font-medium text-white">
             Polo de Ciência e Tecnologia
           </p>
-          <div className="mt-2 flex h-[3px] overflow-hidden rounded-full bg-white/20">
-            <span className="w-1/4 bg-[#f4c430]" />
-            <span className="w-1/4 bg-[#f59e0b]" />
-            <span className="w-1/4 bg-[#38bdf8]" />
-            <span className="flex-1 bg-white/50" />
+
+          <div className="mt-[11px] flex h-[4px] w-full overflow-hidden rounded-full bg-white/30">
+            <span className="w-[20%] bg-[#ffcf32]" />
+            <span className="w-[17%] bg-[#f59e35]" />
+            <span className="w-[17%] bg-[#f47c35]" />
+            <span className="w-[17%] bg-[#31a9e0]" />
+            <span className="w-[29%] bg-white/55" />
           </div>
         </div>
       </div>
