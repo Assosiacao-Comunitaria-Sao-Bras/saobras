@@ -35,49 +35,50 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="app-sidebar relative sticky top-0 z-20 flex h-screen min-h-0 w-[248px] shrink-0 flex-col overflow-hidden text-white">
+    <aside className="app-sidebar relative sticky top-0 z-20 flex h-dvh min-h-0 w-[76px] shrink-0 flex-col overflow-hidden text-white lg:w-[232px] xl:w-[248px]">
       <div className="sidebar-glow pointer-events-none absolute -right-24 top-48 h-64 w-64 rounded-full" />
 
-      {/* LOGOTIPOS */}
-      <div className="relative shrink-0 px-[24px] pt-[20px]">
-        <div className="flex h-[58px] items-center justify-center">
-          <Image
-            src="/logos/prefeitura-feira.png"
-            alt="Prefeitura de Feira de Santana"
-            width={190}
-            height={75}
-            priority
-            className="h-auto max-h-[58px] w-full max-w-[165px] object-contain brightness-0 invert"
-          />
+      {/* LOGOTIPOS (só em telas a partir de lg) */}
+      <div className="relative shrink-0 px-3 pt-4 lg:px-[24px] lg:pt-[20px]">
+        <div className="hidden lg:block">
+          <div className="flex h-[58px] items-center justify-center">
+            <Image
+              src="/logos/prefeitura-feira.png"
+              alt="Prefeitura de Feira de Santana"
+              width={190}
+              height={75}
+              priority
+              className="h-auto max-h-[58px] w-full max-w-[165px] object-contain brightness-0 invert"
+            />
+          </div>
+
+          <div className="mt-[12px] flex h-[42px] items-center justify-center">
+            <Image
+              src="/logos/fundacao-sem-fundo.png"
+              alt="Fundação Municipal Egberto Costa"
+              width={190}
+              height={65}
+              priority
+              className="h-auto max-h-[40px] w-full max-w-[165px] object-contain brightness-0 invert"
+            />
+          </div>
         </div>
 
-        <div className="mt-[12px] flex h-[42px] items-center justify-center">
-          <Image
-            src="/logos/fundacao-sem-fundo.png"
-            alt="Fundação Municipal Egberto Costa"
-            width={190}
-            height={65}
-            priority
-            className="h-auto max-h-[40px] w-full max-w-[165px] object-contain brightness-0 invert"
-          />
-        </div>
+        <div className="mt-2 border-t border-white/20 lg:mt-[14px]" />
 
-        <div className="mt-[14px] border-t border-white/20" />
-
-        <div className="flex h-[43px] items-center gap-[10px]">
+        <div className="flex h-[43px] items-center justify-center gap-[10px] lg:justify-start">
           <span className="h-[10px] w-[10px] shrink-0 rounded-full bg-[#ffcf32]" />
-          <span className="whitespace-nowrap text-[12px] font-bold uppercase tracking-[0.01em]">
+          <span className="hidden whitespace-nowrap text-[12px] font-bold uppercase tracking-[0.01em] lg:inline">
             Sistema do Polo Digital
           </span>
         </div>
       </div>
 
-      {/* MENU PRINCIPAL: TODOS OS ITENS VISÍVEIS */}
-      <nav className="relative flex shrink-0 flex-col gap-[4px] overflow-hidden px-[12px] pb-2">
+      {/* MENU: ocupa o espaço que sobra e rola se a tela for baixa */}
+      <nav className="relative flex min-h-0 flex-1 flex-col gap-[4px] overflow-y-auto overflow-x-hidden px-2 pb-2 lg:px-[12px]">
         {menuItems.map((item) => {
           const active =
-            pathname === item.href ||
-            pathname.startsWith(`${item.href}/`);
+            pathname === item.href || pathname.startsWith(`${item.href}/`);
 
           const Icon = item.icon;
 
@@ -85,8 +86,9 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              title={item.name}
               aria-current={active ? "page" : undefined}
-              className={`group relative flex h-[44px] min-h-[44px] items-center gap-[13px] rounded-[9px] px-[19px] text-[13px] transition-colors duration-200 ${
+              className={`group relative flex h-[44px] min-h-[44px] items-center justify-center gap-[13px] rounded-[9px] px-0 text-[13px] transition-colors duration-200 lg:justify-start lg:px-[19px] ${
                 active
                   ? "bg-[#3198e8] font-semibold text-white"
                   : "font-medium text-white hover:bg-white/10"
@@ -105,7 +107,7 @@ export function Sidebar() {
                 />
               </span>
 
-              <span className="whitespace-nowrap leading-none">
+              <span className="hidden whitespace-nowrap leading-none lg:inline">
                 {item.name}
               </span>
             </Link>
@@ -113,22 +115,25 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* RODAPÉ FIXADO NA PARTE INFERIOR */}
-      <div className="relative mt-auto shrink-0 px-[12px] pb-[22px]">
+      {/* RODAPÉ sempre visível */}
+      <div className="relative shrink-0 px-2 pb-4 lg:px-[12px] lg:pb-[22px]">
         <div className="border-t border-white/20" />
 
         <button
           type="button"
           onClick={handleLogout}
-          className="mt-[10px] flex h-[43px] w-full items-center gap-[13px] rounded-[9px] px-[19px] text-[13px] font-medium text-white transition-colors hover:bg-white/10"
+          title="Sair do sistema"
+          className="mt-[10px] flex h-[43px] w-full items-center justify-center gap-[13px] rounded-[9px] px-0 text-[13px] font-medium text-white transition-colors hover:bg-white/10 lg:justify-start lg:px-[19px]"
         >
           <span className="flex w-[22px] shrink-0 items-center justify-center">
             <LogOut size={22} strokeWidth={1.9} />
           </span>
-          <span className="whitespace-nowrap">Sair do sistema</span>
+          <span className="hidden whitespace-nowrap lg:inline">
+            Sair do sistema
+          </span>
         </button>
 
-        <div className="mt-[20px] px-[17px]">
+        <div className="mt-[16px] hidden px-[17px] lg:block [@media(min-height:700px)]:mt-[20px]">
           <p className="text-[10px] leading-[15px] text-white/75">
             Prefeitura de Feira de Santana
           </p>
