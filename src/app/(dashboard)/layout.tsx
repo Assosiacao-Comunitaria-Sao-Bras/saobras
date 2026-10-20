@@ -36,7 +36,7 @@ export default async function DashboardLayout({
       <Sidebar />
 
       <div className="app-workspace min-w-0 flex-1">
-        <header className="app-topbar sticky top-0 z-10 flex h-[66px] items-center justify-between gap-4 border-b border-blue-100 bg-white/95 px-5 backdrop-blur sm:px-7 lg:px-9">
+        <header className="app-topbar sticky top-0 z-10 flex h-[66px] items-center justify-between gap-4 border-b border-blue-100 bg-white/95 px-4 backdrop-blur sm:px-6 lg:px-8 2xl:px-10">
           {/* Identificação do Polo */}
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2d98eb] text-white">
@@ -83,10 +83,8 @@ export default async function DashboardLayout({
           </div>
         </header>
 
-        <main className="app-main min-w-0 px-3 pb-8 pt-5 sm:px-5 sm:pt-6 lg:px-7 lg:pt-7">
-          <div className="mx-auto w-full max-w-[1600px]">
-            {children}
-          </div>
+        <main className="app-main min-w-0 px-3 pb-8 pt-5 sm:px-5 sm:pt-6 lg:px-7 lg:pt-7 2xl:px-10">
+          <div className="mx-auto w-full max-w-[1920px]">{children}</div>
         </main>
       </div>
     </div>
