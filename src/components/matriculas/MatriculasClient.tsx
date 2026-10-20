@@ -126,6 +126,7 @@ export default function MatriculasClient({
           .select(
             "id, nome, curso_id, horario, dias_semana, cursos(titulo)"
           )
+          .eq("status", "ativa")
           .order("nome"),
       ]);
 
