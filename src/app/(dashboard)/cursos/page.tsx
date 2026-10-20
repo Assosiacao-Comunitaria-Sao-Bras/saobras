@@ -23,7 +23,7 @@ export default async function CursosPage() {
 
   if (cursosError || turmasError) {
     return (
-      <div className="p-8 max-w-7xl mx-auto">
+      <div className="w-full">
         <div className="bg-red-50 text-red-600 p-4 rounded-md border border-red-100">
           Erro ao carregar dados: {cursosError?.message || turmasError?.message}
         </div>
@@ -32,7 +32,7 @@ export default async function CursosPage() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="w-full">
       <CursosClient cursos={cursos || []} turmas={turmas || []} />
     </div>
   );
