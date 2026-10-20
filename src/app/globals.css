@@ -103,13 +103,9 @@ h3 {
   max-width: 100%;
 }
 
-/* Barra lateral azul (a largura é controlada no Sidebar.tsx) */
+/* Barra lateral azul (posição e largura são controladas no Sidebar.tsx) */
 
 .app-sidebar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  flex-shrink: 0;
   background: linear-gradient(
     180deg,
     #1478dc 0%,
@@ -260,6 +256,11 @@ input[type="radio"] {
   background: #f4f9ff;
 }
 
+/* Caixas de tabela passam a rolar horizontalmente */
+.app-main .overflow-hidden:has(> table) {
+  overflow-x: auto;
+}
+
 /* Rolagem geral */
 
 * {
@@ -281,7 +282,7 @@ input[type="radio"] {
   background: transparent;
 }
 
-/* Janelas estreitas */
+/* Celular */
 
 @media (max-width: 760px) {
   body {
@@ -293,10 +294,20 @@ input[type="radio"] {
     padding-right: 12px !important;
   }
 
-  .app-main table {
-    min-width: 600px;
+  /* tabelas sem largura própria ganham um mínimo e rolam para o lado */
+  .app-main table:not([class*="min-w-"]) {
+    min-width: 640px;
+  }
+
+  /* 16px evita o zoom automático do iPhone ao tocar nos campos */
+  .app-main input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  .app-main select,
+  .app-main textarea {
+    font-size: 16px;
   }
 }
+
+/* Acessibilidade: reduz animações quando solicitado */
 
 @media (prefers-reduced-motion: reduce) {
   *,
