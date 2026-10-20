@@ -350,7 +350,7 @@ function ModalFrequenciaAluno({
   const pctGeral = percentualFreq(totalGeral);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl">
         <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
           <div className="min-w-0">
@@ -1185,7 +1185,14 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                     Alunos matriculados ({(alunosPorTurma[editingTurma.id] || []).length}/{LIMITE_VAGAS})
                   </label>
                   <div className="max-h-48 overflow-y-auto">
-                    <ListaAlunos alunos={alunosPorTurma[editingTurma.id] || []} />
+                    <ListaAlunos
+                      alunos={alunosPorTurma[editingTurma.id] || []}
+                      onVerFrequencia={(a) =>
+                        a.aluno_id &&
+                        editingTurma.id &&
+                        setAlunoFrequencia({ aluno_id: a.aluno_id, nome: a.nome, cpf: a.cpf, turmaId: editingTurma.id })
+                      }
+                    />
                   </div>
                 </div>
               )}
