@@ -23,7 +23,7 @@ export default async function RelatoriosPage() {
   ]);
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="w-full">
       <RelatoriosClient
         cursos={resCursos.data || []}
         turmas={resTurmas.data || []}
