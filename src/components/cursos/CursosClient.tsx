@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState, useEffect } from "react";
-import { Plus, Edit2, Trash2, Calendar, BookOpen, Clock, X, Save, Archive, RotateCcw, ChevronDown, ChevronUp, Users } from "lucide-react";
+import { Plus, Edit2, Trash2, Calendar, BookOpen, Clock, X, Save, Archive, RotateCcw, ChevronDown, ChevronUp, Users, CheckCircle2, XCircle, ClipboardList } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
@@ -166,7 +166,66 @@ type AlunoDaTurma = {
   data_matricula: string | null;
 };
 
-function ListaAlunos({ alunos }: { alunos: AlunoDaTurma[] }) {
+type ResumoFreq = { presentes: number; faltas: number };
+
+type RegistroFreq = {
+  id: string;
+  turma_id: string;
+  data_hora: string;
+  status: string | null;
+  turmas?:
+    | { nome: string; status?: string | null; data_encerramento?: string | null; cursos?: { titulo: string } | { titulo: string }[] | null }
+    | { nome: string; status?: string | null; data_encerramento?: string | null; cursos?: { titulo: string } | { titulo: string }[] | null }[]
+    | null;
+};
+
+function statusEhFalta(status: string | null | undefined) {
+  return String(status || "presente").toLowerCase().trim() === "falta";
+}
+
+function percentualFreq(r?: ResumoFreq) {
+  if (!r) return null;
+  const total = r.presentes + r.faltas;
+  if (!total) return null;
+  return Math.round((r.presentes / total) * 100);
+}
+
+function corPercentual(p: number | null) {
+  if (p === null) return "bg-slate-100 text-slate-500 border-slate-200";
+  if (p >= 75) return "bg-emerald-100 text-emerald-700 border-emerald-200";
+  if (p >= 50) return "bg-amber-100 text-amber-700 border-amber-200";
+  return "bg-red-100 text-red-700 border-red-200";
+}
+
+function formatarDataSessao(valor: string) {
+  const d = new Date(valor);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+}
+
+// Busca todas as linhas de uma consulta, paginando (o Supabase limita ~1000 por vez).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function buscarTudo<T = any>(montar: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>) {
+  const passo = 1000;
+  const todos: T[] = [];
+  for (let de = 0; ; de += passo) {
+    const { data, error } = await montar(de, de + passo - 1);
+    if (error) throw error;
+    todos.push(...(data || []));
+    if (!data || data.length < passo) break;
+  }
+  return todos;
+}
+
+function ListaAlunos({
+  alunos,
+  frequencia,
+  onVerFrequencia,
+}: {
+  alunos: AlunoDaTurma[];
+  frequencia?: Record<string, ResumoFreq>;
+  onVerFrequencia: (aluno: AlunoDaTurma) => void;
+}) {
   if (alunos.length === 0) {
     return (
       <p className="text-sm italic text-slate-500">
@@ -177,20 +236,229 @@ function ListaAlunos({ alunos }: { alunos: AlunoDaTurma[] }) {
 
   return (
     <ul className="divide-y divide-slate-100 rounded-md border border-slate-200 bg-white">
-      {alunos.map((a, i) => (
-        <li
-          key={a.matricula_id}
-          className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
-        >
-          <span className="min-w-0 truncate font-medium text-slate-800">
-            {i + 1}. {a.nome}
-          </span>
-          <span className="shrink-0 text-xs text-slate-500">
-            {a.cpf || "sem CPF"} · matrícula {formatarData(a.data_matricula)}
-          </span>
-        </li>
-      ))}
+      {alunos.map((a, i) => {
+        const resumo = a.aluno_id ? frequencia?.[a.aluno_id] : undefined;
+        const pct = percentualFreq(resumo);
+        return (
+          <li key={a.matricula_id}>
+            <button
+              type="button"
+              disabled={!a.aluno_id}
+              onClick={() => onVerFrequencia(a)}
+              title="Ver frequência do aluno"
+              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:cursor-not-allowed"
+            >
+              <span className="min-w-0">
+                <span className="block truncate font-medium text-slate-800">
+                  {i + 1}. {a.nome}
+                </span>
+                <span className="block text-xs text-slate-500">
+                  {a.cpf || "sem CPF"} · matrícula {formatarData(a.data_matricula)}
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                {resumo && (resumo.presentes + resumo.faltas) > 0 && (
+                  <span className="text-xs text-slate-500">
+                    {resumo.presentes} pres. · {resumo.faltas} falta(s)
+                  </span>
+                )}
+                <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${corPercentual(pct)}`}>
+                  <ClipboardList className="h-3 w-3" />
+                  {pct === null ? "Frequência" : `${pct}%`}
+                </span>
+              </span>
+            </button>
+          </li>
+        );
+      })}
     </ul>
+  );
+}
+
+function ModalFrequenciaAluno({
+  aluno,
+  turmaDestaqueId,
+  onClose,
+}: {
+  aluno: { aluno_id: string; nome: string; cpf: string | null };
+  turmaDestaqueId: string;
+  onClose: () => void;
+}) {
+  const [registros, setRegistros] = useState<RegistroFreq[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [abertas, setAbertas] = useState<Record<string, boolean>>({ [turmaDestaqueId]: true });
+
+  useEffect(() => {
+    let ativo = true;
+    (async () => {
+      try {
+        const dados = await buscarTudo<RegistroFreq>((de, ate) =>
+          supabase
+            .from("presencas")
+            .select("id, turma_id, data_hora, status, turmas(nome, status, data_encerramento, cursos(titulo))")
+            .eq("aluno_id", aluno.aluno_id)
+            .order("data_hora", { ascending: true })
+            .range(de, ate) as unknown as PromiseLike<{ data: RegistroFreq[] | null; error: { message: string } | null }>
+        );
+        if (ativo) setRegistros(dados);
+      } catch (e) {
+        console.error("Erro ao carregar frequência do aluno:", e);
+        if (ativo) setErro("Não foi possível carregar a frequência deste aluno.");
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [aluno.aluno_id]);
+
+  // Agrupa os registros por turma
+  const grupos = (() => {
+    const mapa = new Map<
+      string,
+      { turmaId: string; nome: string; curso: string; encerrada: boolean; encerradaEm: string | null; registros: RegistroFreq[] }
+    >();
+    (registros || []).forEach((r) => {
+      const t = Array.isArray(r.turmas) ? r.turmas[0] : r.turmas;
+      const c = t?.cursos ? (Array.isArray(t.cursos) ? t.cursos[0] : t.cursos) : null;
+      if (!mapa.has(r.turma_id)) {
+        mapa.set(r.turma_id, {
+          turmaId: r.turma_id,
+          nome: t?.nome || "Turma removida",
+          curso: c?.titulo || "Curso indefinido",
+          encerrada: t?.status === "encerrada",
+          encerradaEm: t?.data_encerramento ?? null,
+          registros: [],
+        });
+      }
+      mapa.get(r.turma_id)!.registros.push(r);
+    });
+    return Array.from(mapa.values()).sort((a, b) => {
+      if (a.turmaId === turmaDestaqueId) return -1;
+      if (b.turmaId === turmaDestaqueId) return 1;
+      const ua = a.registros[a.registros.length - 1]?.data_hora || "";
+      const ub = b.registros[b.registros.length - 1]?.data_hora || "";
+      return ub.localeCompare(ua);
+    });
+  })();
+
+  const resumir = (lista: RegistroFreq[]): ResumoFreq => ({
+    presentes: lista.filter((r) => !statusEhFalta(r.status)).length,
+    faltas: lista.filter((r) => statusEhFalta(r.status)).length,
+  });
+
+  const totalGeral = resumir(registros || []);
+  const pctGeral = percentualFreq(totalGeral);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
+          <div className="min-w-0">
+            <h3 className="truncate text-lg font-bold text-slate-900">{aluno.nome}</h3>
+            <p className="text-xs text-slate-500">{aluno.cpf || "sem CPF"} · frequência por turma</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Fechar">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4 overflow-y-auto p-4">
+          {erro && <p className="text-sm text-red-600">{erro}</p>}
+          {!erro && registros === null && <p className="text-sm text-slate-500">Carregando frequência...</p>}
+
+          {registros && registros.length === 0 && (
+            <p className="text-sm italic text-slate-500">Nenhum registro de frequência para este aluno.</p>
+          )}
+
+          {registros && registros.length > 0 && (
+            <>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2">
+                  <p className="text-xl font-bold text-emerald-700">{totalGeral.presentes}</p>
+                  <p className="text-xs text-emerald-700">Presenças (geral)</p>
+                </div>
+                <div className="rounded-md border border-red-200 bg-red-50 p-2">
+                  <p className="text-xl font-bold text-red-700">{totalGeral.faltas}</p>
+                  <p className="text-xs text-red-700">Faltas (geral)</p>
+                </div>
+                <div className={`rounded-md border p-2 ${corPercentual(pctGeral)}`}>
+                  <p className="text-xl font-bold">{pctGeral === null ? "—" : `${pctGeral}%`}</p>
+                  <p className="text-xs">Frequência geral</p>
+                </div>
+              </div>
+
+              {grupos.map((g) => {
+                const r = resumir(g.registros);
+                const pct = percentualFreq(r);
+                const aberta = !!abertas[g.turmaId];
+                return (
+                  <div
+                    key={g.turmaId}
+                    className={`rounded-md border ${g.turmaId === turmaDestaqueId ? "border-blue-300" : "border-slate-200"}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setAbertas((prev) => ({ ...prev, [g.turmaId]: !prev[g.turmaId] }))}
+                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-slate-50"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold text-slate-800">
+                          {g.nome}
+                          {g.turmaId === turmaDestaqueId && (
+                            <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                              turma aberta
+                            </span>
+                          )}
+                        </span>
+                        <span className="block text-xs text-slate-500">
+                          {g.curso} · {g.encerrada ? `encerrada em ${formatarData(g.encerradaEm)}` : "em andamento"}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-xs text-slate-500">
+                          {r.presentes} pres. · {r.faltas} falta(s)
+                        </span>
+                        <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${corPercentual(pct)}`}>
+                          {pct === null ? "—" : `${pct}%`}
+                        </span>
+                        {aberta ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                      </span>
+                    </button>
+
+                    {aberta && (
+                      <div className="grid grid-cols-2 gap-1.5 border-t border-slate-100 p-3 sm:grid-cols-3">
+                        {g.registros.map((reg) => {
+                          const falta = statusEhFalta(reg.status);
+                          return (
+                            <div
+                              key={reg.id}
+                              className={`flex items-center gap-1.5 rounded border px-2 py-1 text-xs ${
+                                falta
+                                  ? "border-red-200 bg-red-50 text-red-700"
+                                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              }`}
+                            >
+                              {falta ? <XCircle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                              {formatarDataSessao(reg.data_hora)} · {falta ? "Falta" : "Presente"}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+
+        <div className="flex justify-end border-t border-slate-200 p-3">
+          <button onClick={onClose} className="rounded-md bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -200,6 +468,39 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
   const [vagasOcupadas, setVagasOcupadas] = useState<Record<string, number>>({});
   const [alunosPorTurma, setAlunosPorTurma] = useState<Record<string, AlunoDaTurma[]>>({});
   const [turmaExpandida, setTurmaExpandida] = useState<string | null>(null);
+  const [freqPorTurma, setFreqPorTurma] = useState<Record<string, Record<string, ResumoFreq>>>({});
+  const [alunoFrequencia, setAlunoFrequencia] = useState<
+    { aluno_id: string; nome: string; cpf: string | null; turmaId: string } | null
+  >(null);
+
+  // Ao expandir uma turma encerrada, carrega o resumo de frequência de cada aluno nela.
+  useEffect(() => {
+    if (!turmaExpandida) return;
+    let ativo = true;
+    (async () => {
+      try {
+        const dados = await buscarTudo<{ aluno_id: string; status: string | null }>((de, ate) =>
+          supabase
+            .from("presencas")
+            .select("aluno_id, status")
+            .eq("turma_id", turmaExpandida)
+            .range(de, ate) as unknown as PromiseLike<{ data: { aluno_id: string; status: string | null }[] | null; error: { message: string } | null }>
+        );
+        const resumo: Record<string, ResumoFreq> = {};
+        dados.forEach((r) => {
+          if (!resumo[r.aluno_id]) resumo[r.aluno_id] = { presentes: 0, faltas: 0 };
+          if (statusEhFalta(r.status)) resumo[r.aluno_id].faltas++;
+          else resumo[r.aluno_id].presentes++;
+        });
+        if (ativo) setFreqPorTurma((prev) => ({ ...prev, [turmaExpandida]: resumo }));
+      } catch (e) {
+        console.error("Erro ao carregar frequência da turma:", e);
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [turmaExpandida]);
   
   useEffect(() => {
     setTurmas(serverTurmas);
@@ -731,7 +1032,14 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
                             Alunos da turma {turma.nome}
                           </p>
-                          <ListaAlunos alunos={alunosPorTurma[turma.id] || []} />
+                          <ListaAlunos
+                            alunos={alunosPorTurma[turma.id] || []}
+                            frequencia={freqPorTurma[turma.id]}
+                            onVerFrequencia={(a) =>
+                              a.aluno_id &&
+                              setAlunoFrequencia({ aluno_id: a.aluno_id, nome: a.nome, cpf: a.cpf, turmaId: turma.id })
+                            }
+                          />
                         </td>
                       </tr>
                     )}
@@ -747,11 +1055,19 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                 </tbody>
               </table>
               <p className="px-5 py-3 text-xs text-slate-500 border-t border-slate-200 bg-slate-50">
-                Os alunos, matrículas e a frequência de cada turma encerrada continuam disponíveis em Relatórios e no Dashboard.
+                Clique em um aluno para ver a frequência dele. Os dados de cada turma ficam salvos separadamente, mesmo que o aluno entre em outras turmas depois.
               </p>
             </div>
           )}
         </div>
+      )}
+
+      {alunoFrequencia && (
+        <ModalFrequenciaAluno
+          aluno={alunoFrequencia}
+          turmaDestaqueId={alunoFrequencia.turmaId}
+          onClose={() => setAlunoFrequencia(null)}
+        />
       )}
 
       {/* MODAL CURSO */}
