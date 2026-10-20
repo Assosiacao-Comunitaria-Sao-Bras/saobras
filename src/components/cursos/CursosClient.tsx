@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Plus, Edit2, Trash2, Calendar, BookOpen, Clock, X, Save } from "lucide-react";
+import { Fragment, useState, useEffect } from "react";
+import { Plus, Edit2, Trash2, Calendar, BookOpen, Clock, X, Save, Archive, RotateCcw, ChevronDown, ChevronUp, Users } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
@@ -23,6 +23,9 @@ export type Turma = {
   data_hora_inicio: string | null;
   data_hora_fim: string | null;
   vagas?: number;
+  status?: string | null;
+  criado_em?: string | null;
+  data_encerramento?: string | null;
   cursos?: { titulo: string } | null;
 };
 
@@ -144,10 +147,59 @@ const getColorForId = (id: string) => {
   return keys[Math.abs(hash) % keys.length];
 };
 
+function formatarData(valor?: string | null) {
+  if (!valor) return "—";
+  const d = new Date(valor);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("pt-BR");
+}
+
+function turmaEncerrada(turma: Turma) {
+  return turma.status === "encerrada";
+}
+
+type AlunoDaTurma = {
+  matricula_id: string;
+  aluno_id: string | null;
+  nome: string;
+  cpf: string | null;
+  data_matricula: string | null;
+};
+
+function ListaAlunos({ alunos }: { alunos: AlunoDaTurma[] }) {
+  if (alunos.length === 0) {
+    return (
+      <p className="text-sm italic text-slate-500">
+        Nenhum aluno matriculado nesta turma.
+      </p>
+    );
+  }
+
+  return (
+    <ul className="divide-y divide-slate-100 rounded-md border border-slate-200 bg-white">
+      {alunos.map((a, i) => (
+        <li
+          key={a.matricula_id}
+          className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+        >
+          <span className="min-w-0 truncate font-medium text-slate-800">
+            {i + 1}. {a.nome}
+          </span>
+          <span className="shrink-0 text-xs text-slate-500">
+            {a.cpf || "sem CPF"} · matrícula {formatarData(a.data_matricula)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[], turmas: Turma[] }) {
   const router = useRouter();
   const [turmas, setTurmas] = useState<Turma[]>(serverTurmas);
   const [vagasOcupadas, setVagasOcupadas] = useState<Record<string, number>>({});
+  const [alunosPorTurma, setAlunosPorTurma] = useState<Record<string, AlunoDaTurma[]>>({});
+  const [turmaExpandida, setTurmaExpandida] = useState<string | null>(null);
   
   useEffect(() => {
     setTurmas(serverTurmas);
@@ -158,7 +210,10 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
 
     const carregarVagas = async () => {
       if (!serverTurmas || serverTurmas.length === 0) {
-        if (ativo) setVagasOcupadas({});
+        if (ativo) {
+          setVagasOcupadas({});
+          setAlunosPorTurma({});
+        }
         return;
       }
 
@@ -166,7 +221,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
 
       const { data, error } = await supabase
         .from("matriculas")
-        .select("turma_id")
+        .select("id, turma_id, aluno_id, data_matricula, alunos(nome_completo, cpf)")
         .in("turma_id", turmaIds);
 
       if (error) {
@@ -175,19 +230,41 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
       }
 
       const contagem: Record<string, number> = {};
+      const listas: Record<string, AlunoDaTurma[]> = {};
 
       turmaIds.forEach((id) => {
         contagem[id] = 0;
+        listas[id] = [];
       });
 
-      (data || []).forEach((matricula) => {
-        if (matricula.turma_id) {
-          contagem[matricula.turma_id] =
-            (contagem[matricula.turma_id] || 0) + 1;
-        }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (data || []).forEach((matricula: any) => {
+        const turmaId = matricula.turma_id as string | null;
+        if (!turmaId || !listas[turmaId]) return;
+
+        contagem[turmaId] = (contagem[turmaId] || 0) + 1;
+
+        const aluno = Array.isArray(matricula.alunos)
+          ? matricula.alunos[0]
+          : matricula.alunos;
+
+        listas[turmaId].push({
+          matricula_id: matricula.id,
+          aluno_id: matricula.aluno_id ?? null,
+          nome: aluno?.nome_completo || "Aluno sem nome",
+          cpf: aluno?.cpf ?? null,
+          data_matricula: matricula.data_matricula ?? null,
+        });
       });
 
-      if (ativo) setVagasOcupadas(contagem);
+      Object.values(listas).forEach((lista) =>
+        lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+      );
+
+      if (ativo) {
+        setVagasOcupadas(contagem);
+        setAlunosPorTurma(listas);
+      }
     };
 
     carregarVagas();
@@ -213,6 +290,15 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
     const ocupadas = vagasOcupadas[turma.id] || 0;
     return Math.max(0, LIMITE_VAGAS - ocupadas);
   };
+
+  const turmasAtivas = turmas.filter((t) => !turmaEncerrada(t));
+  const turmasEncerradas = turmas
+    .filter((t) => turmaEncerrada(t))
+    .sort((a, b) =>
+      (b.data_encerramento || "").localeCompare(a.data_encerramento || "")
+    );
+
+  const [mostrarEncerradas, setMostrarEncerradas] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"cursos" | "turmas">("turmas");
 
@@ -289,6 +375,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
     } else {
       const insertPayload = {
         ...payload,
+        status: "ativa",
         criado_em: new Date().toISOString(),
       };
       const { error: insertError } = await supabase.from("turmas").insert([insertPayload]);
@@ -304,10 +391,91 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
     router.refresh();
   };
 
+  // Excluir só é permitido para turma SEM nenhum aluno e SEM frequência.
+  // Turma com histórico deve ser ENCERRADA (nada é apagado).
   const handleDeleteTurma = async (id: string) => {
-    if (!confirm("Tem certeza que deseja excluir esta turma?")) return;
+    const { count: totalMatriculas, error: errMat } = await supabase
+      .from("matriculas")
+      .select("id", { count: "exact", head: true })
+      .eq("turma_id", id);
+
+    const { count: totalPresencas, error: errPres } = await supabase
+      .from("presencas")
+      .select("id", { count: "exact", head: true })
+      .eq("turma_id", id);
+
+    if (errMat || errPres) {
+      alert("Não foi possível verificar o histórico da turma. Use \"Encerrar turma\" para não perder dados.");
+      return;
+    }
+
+    if ((totalMatriculas || 0) > 0 || (totalPresencas || 0) > 0) {
+      alert(
+        `Esta turma tem ${totalMatriculas || 0} matrícula(s) e ${totalPresencas || 0} registro(s) de frequência.\n\nPara não perder o histórico, use "Encerrar turma" em vez de excluir.`
+      );
+      return;
+    }
+
+    if (!confirm("Esta turma não tem alunos nem frequência. Excluir definitivamente?")) return;
     const { error } = await supabase.from("turmas").delete().eq("id", id);
     if (error) alert("Erro ao excluir: " + error.message);
+    else {
+      setIsTurmaModalOpen(false);
+      router.refresh();
+    }
+  };
+
+  // Encerra a turma: ela sai da grade, mas alunos, matrículas e frequência continuam salvos.
+  const handleEncerrarTurma = async (turma: Partial<Turma>, abrirNova = false) => {
+    if (!turma.id) return;
+
+    const alunos = vagasOcupadas[turma.id] || 0;
+    const mensagem = abrirNova
+      ? `Encerrar a turma "${turma.nome}" (${alunos} aluno(s)) e abrir uma nova no mesmo horário?\n\nOs alunos, matrículas e a frequência da turma encerrada continuam salvos no histórico.`
+      : `Encerrar a turma "${turma.nome}" (${alunos} aluno(s))?\n\nEla sai da grade, mas os alunos, matrículas e a frequência continuam salvos no histórico. A data de hoje será registrada como data de encerramento.`;
+
+    if (!confirm(mensagem)) return;
+
+    const { error } = await supabase
+      .from("turmas")
+      .update({
+        status: "encerrada",
+        data_encerramento: new Date().toISOString(),
+      })
+      .eq("id", turma.id);
+
+    if (error) {
+      alert("Erro ao encerrar turma: " + error.message);
+      return;
+    }
+
+    if (abrirNova) {
+      // Mantém o modal aberto já preenchido para criar a nova turma
+      setEditingTurma({
+        nome: "",
+        curso_id: turma.curso_id,
+        turno: turma.turno || "Manhã",
+        horario: turma.horario || "08:30–09:30",
+        dias_semana: turma.dias_semana || [],
+        vagas: LIMITE_VAGAS,
+      });
+      setIsTurmaModalOpen(true);
+    } else {
+      setIsTurmaModalOpen(false);
+    }
+
+    router.refresh();
+  };
+
+  const handleReabrirTurma = async (turma: Turma) => {
+    if (!confirm(`Reabrir a turma "${turma.nome}"? Ela volta para a grade semanal.`)) return;
+
+    const { error } = await supabase
+      .from("turmas")
+      .update({ status: "ativa", data_encerramento: null })
+      .eq("id", turma.id);
+
+    if (error) alert("Erro ao reabrir turma: " + error.message);
     else router.refresh();
   };
 
@@ -329,7 +497,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
   };
 
   const getTurmasForCell = (horarioLabel: string, dia: string) => {
-    return turmas.filter(t => {
+    return turmasAtivas.filter(t => {
       const tHorario = getHorarioLabel(t);
       return tHorario === horarioLabel && (t.dias_semana || []).includes(dia);
     });
@@ -378,7 +546,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {cursos.map(curso => {
-                  const turmasDoCurso = turmas.filter(t => t.curso_id === curso.id);
+                  const turmasDoCurso = turmasAtivas.filter(t => t.curso_id === curso.id);
                   const cursoColor = COLOR_THEMES[getColorForId(curso.id)];
 
                   return (
@@ -459,17 +627,17 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleDeleteTurma(turma.id);
+                                    handleEncerrarTurma(turma);
                                   }}
-                                  className="absolute top-1.5 right-1.5 p-1 text-slate-400 hover:text-red-600 hover:bg-white/80 rounded opacity-0 group-hover:opacity-100 transition-opacity z-20"
-                                  title="Excluir turma"
+                                  className="absolute top-1.5 right-1.5 p-1 text-slate-500 hover:text-amber-700 hover:bg-white/80 rounded opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                                  title="Encerrar turma (mantém o histórico)"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Archive className="w-3.5 h-3.5" />
                                 </button>
                                 <div className="font-bold text-slate-800 text-sm leading-tight mb-1 pr-5 relative z-10">{turma.nome}</div>
                                 <div className={`text-xs font-medium line-clamp-1 mb-2 relative z-10 ${turmaColor.gridTextSub}`}>{(Array.isArray(turma.cursos) ? turma.cursos[0]?.titulo : turma.cursos?.titulo) || "Curso Indefinido"}</div>
                                 <div className={`mt-auto inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border relative z-10 ${turmaColor.badge}`}>
-                                  {getVagasDisponiveis(turma)} vagas
+                                  {getVagasDisponiveis(turma)} vagas · {vagasOcupadas[turma.id] || 0} alunos
                                 </div>
                               </div>
                             );
@@ -482,6 +650,107 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* TURMAS ENCERRADAS (HISTÓRICO) */}
+      {activeTab === "turmas" && (
+        <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setMostrarEncerradas((v) => !v)}
+            className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-slate-50"
+          >
+            <span className="flex items-center gap-2 font-bold text-slate-700">
+              <Archive className="w-4 h-4 text-amber-600" />
+              Turmas encerradas
+              <span className="inline-flex items-center justify-center bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full text-xs font-medium border border-slate-200">
+                {turmasEncerradas.length}
+              </span>
+            </span>
+            {mostrarEncerradas ? (
+              <ChevronUp className="w-4 h-4 text-slate-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-slate-400" />
+            )}
+          </button>
+
+          {mostrarEncerradas && (
+            <div className="overflow-x-auto border-t border-slate-200">
+              <table className="w-full text-sm text-left min-w-[900px]">
+                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="px-5 py-3">Turma</th>
+                    <th className="px-5 py-3">Curso</th>
+                    <th className="px-5 py-3">Horário</th>
+                    <th className="px-5 py-3 text-center">Criada em</th>
+                    <th className="px-5 py-3 text-center">Encerrada em</th>
+                    <th className="px-5 py-3 text-center">Alunos</th>
+                    <th className="px-5 py-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {turmasEncerradas.map((turma) => (
+                    <Fragment key={turma.id}>
+                    <tr className="hover:bg-slate-50">
+                      <td className="px-5 py-3 font-medium text-slate-900">{turma.nome}</td>
+                      <td className="px-5 py-3 text-slate-600">
+                        {(Array.isArray(turma.cursos) ? turma.cursos[0]?.titulo : turma.cursos?.titulo) || "Curso Indefinido"}
+                      </td>
+                      <td className="px-5 py-3 text-slate-600">
+                        {(turma.dias_semana || []).join(", ") || "—"}
+                        <br />
+                        <span className="text-xs text-slate-400">{getHorarioLabel(turma)}</span>
+                      </td>
+                      <td className="px-5 py-3 text-center text-slate-600">{formatarData(turma.criado_em)}</td>
+                      <td className="px-5 py-3 text-center text-slate-600">{formatarData(turma.data_encerramento)}</td>
+                      <td className="px-5 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setTurmaExpandida(turmaExpandida === turma.id ? null : turma.id)}
+                          className="inline-flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full text-xs font-medium border border-slate-200"
+                          title="Ver alunos da turma"
+                        >
+                          <Users className="w-3 h-3" /> {vagasOcupadas[turma.id] || 0}
+                        </button>
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleReabrirTurma(turma)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md"
+                          title="Reabrir turma"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" /> Reabrir
+                        </button>
+                      </td>
+                    </tr>
+                    {turmaExpandida === turma.id && (
+                      <tr className="bg-slate-50/70">
+                        <td colSpan={7} className="px-5 py-4">
+                          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                            Alunos da turma {turma.nome}
+                          </p>
+                          <ListaAlunos alunos={alunosPorTurma[turma.id] || []} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
+                  ))}
+                  {turmasEncerradas.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-5 py-10 text-center text-slate-500 bg-slate-50/50">
+                        Nenhuma turma encerrada ainda.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+              <p className="px-5 py-3 text-xs text-slate-500 border-t border-slate-200 bg-slate-50">
+                Os alunos, matrículas e a frequência de cada turma encerrada continuam disponíveis em Relatórios e no Dashboard.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -517,12 +786,15 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
       {/* MODAL TURMA */}
       {isTurmaModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
             <div className="flex justify-between items-center p-4 border-b border-slate-200">
               <h3 className="font-bold text-lg text-slate-900">{editingTurma?.id ? "Editar Turma" : "Nova Turma"}</h3>
               <button onClick={() => setIsTurmaModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
             </div>
             <form onSubmit={handleSaveTurma} className="p-4 space-y-5">
+              {editingTurma?.id && editingTurma.criado_em && (
+                <p className="text-xs text-slate-500">Turma criada em {formatarData(editingTurma.criado_em)}</p>
+              )}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Curso Vinculado</label>
                 <select required value={editingTurma?.curso_id || ""} onChange={e => setEditingTurma(prev => ({...prev, curso_id: e.target.value}))} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500 text-sm">
@@ -591,9 +863,24 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                 )}
               </div>
 
+              {editingTurma?.id && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Alunos matriculados ({(alunosPorTurma[editingTurma.id] || []).length}/{LIMITE_VAGAS})
+                  </label>
+                  <div className="max-h-48 overflow-y-auto">
+                    <ListaAlunos alunos={alunosPorTurma[editingTurma.id] || []} />
+                  </div>
+                </div>
+              )}
+
               <div className="pt-4 flex justify-end gap-2 border-t border-slate-100">
                 {editingTurma?.id && (
-                  <button type="button" onClick={() => handleDeleteTurma(editingTurma.id!)} className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md mr-auto">Excluir</button>
+                  <div className="mr-auto flex flex-wrap gap-2">
+                    <button type="button" onClick={() => handleEncerrarTurma(editingTurma, true)} className="px-3 py-2 text-sm font-medium text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-md border border-amber-200">Encerrar e abrir nova</button>
+                    <button type="button" onClick={() => handleEncerrarTurma(editingTurma)} className="px-3 py-2 text-sm font-medium text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-md border border-amber-200">Encerrar turma</button>
+                    <button type="button" onClick={() => handleDeleteTurma(editingTurma.id!)} className="px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md">Excluir</button>
+                  </div>
                 )}
                 <button type="button" onClick={() => setIsTurmaModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md">Cancelar</button>
                 <button type="submit" disabled={isSaving || (editingTurma?.dias_semana?.length || 0) === 0} className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md disabled:opacity-50 flex items-center gap-2">
