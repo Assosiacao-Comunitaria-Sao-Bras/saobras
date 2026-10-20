@@ -17,17 +17,28 @@ export default async function DashboardLayout({
   let nomeOperador = "";
 
   if (user) {
-    const { data: operador } = await supabase
-      .from("operadores")
-      .select("nome")
-      .eq("email", user.email ?? "")
-      .maybeSingle();
+    const emailLogin = (user.email ?? "").trim().toLowerCase();
+
+    let nomeTabela = "";
+
+    if (emailLogin) {
+      // Busca sem diferenciar maiúsculas/minúsculas e ignorando espaços
+      const { data: lista } = await supabase
+        .from("operadores")
+        .select("nome, email")
+        .ilike("email", emailLogin.replace(/[%_\\]/g, "\\$&"));
+
+      const operador = lista?.find(
+        (o) => (o.email ?? "").trim().toLowerCase() === emailLogin
+      );
+
+      nomeTabela = operador?.nome?.trim() ?? "";
+    }
 
     nomeOperador =
-      operador?.nome?.trim() ||
+      nomeTabela ||
       user.user_metadata?.full_name ||
       user.user_metadata?.name ||
-      user.email ||
       "Operador";
   }
 
