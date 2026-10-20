@@ -162,6 +162,7 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
       const { data, error } = await supabase
         .from("turmas")
         .select("id, nome, curso_id, turno")
+        .eq("status", "ativa")
         .order("nome", { ascending: true });
 
       if (!error && data) {
