@@ -116,6 +116,7 @@ export default function FormCheckin() {
             .select(
               "id, nome, curso_id, turno, horario, dias_semana"
             )
+            .eq("status", "ativa")
             .order("nome"),
         ]);
 
