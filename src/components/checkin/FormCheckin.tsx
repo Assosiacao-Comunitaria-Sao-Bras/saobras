@@ -1765,14 +1765,14 @@ export default function FormCheckin() {
                         return (
                           <div
                             key={aluno.id}
-                            className={`w-full p-4 rounded-2xl border-2 transition-all ${
+                            className={`flex h-full min-w-0 w-full flex-col p-4 rounded-2xl border-2 transition-all ${
                               presente
                                 ? "bg-emerald-50 border-emerald-500 shadow-sm"
                                 : "bg-red-50 border-red-300"
                             }`}
                           >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                            <div className="flex flex-1 flex-col justify-between gap-4">
+                              <div className="flex min-w-0 items-start gap-3">
                                 <div
                                   className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 font-bold ${
                                     presente
@@ -1783,9 +1783,9 @@ export default function FormCheckin() {
                                   {aluno.nome_completo.charAt(0).toUpperCase()}
                                 </div>
 
-                                <div className="min-w-0">
+                                <div className="min-w-0 flex-1">
                                   <p
-                                    className="font-bold text-slate-900 text-sm truncate"
+                                    className="whitespace-normal [overflow-wrap:anywhere] font-bold text-slate-900 text-sm leading-relaxed"
                                     title={aluno.nome_completo}
                                   >
                                     {aluno.nome_completo}
@@ -1804,7 +1804,7 @@ export default function FormCheckin() {
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-2 shrink-0">
+                              <div className="grid grid-cols-2 gap-2">
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1817,7 +1817,7 @@ export default function FormCheckin() {
                                     }));
                                     setSucesso("");
                                   }}
-                                  className={`px-3 py-2 rounded-lg border font-bold text-xs flex items-center gap-1.5 transition-colors ${
+                                  className={`px-3 py-2 rounded-lg border font-bold text-xs flex items-center justify-center gap-1.5 transition-colors ${
                                     presente
                                       ? "bg-emerald-600 text-white border-emerald-600"
                                       : "bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50"
@@ -1839,7 +1839,7 @@ export default function FormCheckin() {
                                     }));
                                     setSucesso("");
                                   }}
-                                  className={`px-3 py-2 rounded-lg border font-bold text-xs flex items-center gap-1.5 transition-colors ${
+                                  className={`px-3 py-2 rounded-lg border font-bold text-xs flex items-center justify-center gap-1.5 transition-colors ${
                                     !presente
                                       ? "bg-red-600 text-white border-red-600"
                                       : "bg-white text-red-700 border-red-300 hover:bg-red-50"

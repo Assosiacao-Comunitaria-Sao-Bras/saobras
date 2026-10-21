@@ -7,7 +7,6 @@ import {
   Filter,
   RotateCcw,
   FileText,
-  Download,
   BarChart3,
   Users,
   BookOpen,
@@ -18,13 +17,14 @@ import {
   UsersRound,
   UserPlus,
   Layers3,
-  TrendingUp,
-  TrendingDown,
   CalendarDays,
   X,
   ChevronRight,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { ConfiguracaoRelatorio } from "./ConfiguracaoRelatorio";
+import { GraficosRelatorio } from "./GraficosRelatorio";
+import { baixarArquivo, CONFIGURACAO_PADRAO, dataBrasil, emissaoBrasil, gerarCSVRelatorio, nomeArquivoRelatorio, type ConfiguracaoRelatorio as Configuracao, type GraficoRelatorio, type RelatorioExportacao, type TabelaRelatorio } from "@/lib/relatorios-exportacao";
 
 type Curso = {
   id: string;
@@ -124,7 +124,7 @@ function formatarData(data: string) {
 
   if (Number.isNaN(d.getTime())) return "—";
 
-  return d.toLocaleDateString("pt-BR");
+  return dataBrasil(data);
 }
 
 function formatarHora(data: string) {
@@ -133,6 +133,7 @@ function formatarHora(data: string) {
   if (Number.isNaN(d.getTime())) return "—";
 
   return d.toLocaleTimeString("pt-BR", {
+    timeZone: "America/Bahia",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -175,6 +176,14 @@ export default function RelatoriosClient({
   const [filtroDataFim, setFiltroDataFim] = useState("");
   const [filtroPeriodo, setFiltroPeriodo] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("");
+  const [filtroOperador, setFiltroOperador] = useState("");
+  const [configuracao, setConfiguracao] = useState<Configuracao>(CONFIGURACAO_PADRAO);
+  const [exportando, setExportando] = useState(false);
+  const [ultimaEmissao, setUltimaEmissao] = useState("");
+  const [erroRelatorio, setErroRelatorio] = useState("");
+  const [consultaAplicada, setConsultaAplicada] = useState("");
+  const chaveConsulta = JSON.stringify([filtroCurso, filtroTurma, filtroDataInicio, filtroDataFim, filtroStatus, filtroOperador]);
+  const filtrosPendentes = buscou && chaveConsulta !== consultaAplicada;
   const [mostrarMultiplasTurmas, setMostrarMultiplasTurmas] = useState(false);
 
   const turmasFiltradas = useMemo(() => {
@@ -233,10 +242,6 @@ export default function RelatoriosClient({
       .sort((a, b) => b.cursosQuantidade - a.cursosQuantidade || a.nome.localeCompare(b.nome));
   }, [matriculas]);
 
-  const totalTurmas = useMemo(() => new Set(matriculas.map((m) => m.turma_id)).size, [matriculas]);
-  const totalMatriculas = matriculas.length;
-  const totalAlunosMatriculados = useMemo(() => new Set(matriculas.map((m) => m.aluno_id)).size, [matriculas]);
-
   const handlePeriodoChange = (
     event: React.ChangeEvent<HTMLSelectElement>
   ) => {
@@ -244,14 +249,11 @@ export default function RelatoriosClient({
 
     setFiltroPeriodo(valor);
 
-    const hoje = new Date();
+    const diaBrasil = new Date().toLocaleDateString("en-CA", { timeZone: "America/Bahia" });
+    const hoje = new Date(`${diaBrasil}T12:00:00Z`);
 
     const formatarISO = (data: Date) => {
-      const ano = data.getFullYear();
-      const mes = String(data.getMonth() + 1).padStart(2, "0");
-      const dia = String(data.getDate()).padStart(2, "0");
-
-      return `${ano}-${mes}-${dia}`;
+      return data.toISOString().slice(0, 10);
     };
 
     const fim = new Date(hoje);
@@ -264,7 +266,7 @@ export default function RelatoriosClient({
 
     if (valor === "semanal") {
       const inicio = new Date(hoje);
-      inicio.setDate(inicio.getDate() - 6);
+      inicio.setUTCDate(inicio.getUTCDate() - 6);
 
       setFiltroDataInicio(formatarISO(inicio));
       setFiltroDataFim(formatarISO(fim));
@@ -273,7 +275,7 @@ export default function RelatoriosClient({
 
     if (valor === "mensal") {
       const inicio = new Date(hoje);
-      inicio.setDate(inicio.getDate() - 29);
+      inicio.setUTCDate(inicio.getUTCDate() - 29);
 
       setFiltroDataInicio(formatarISO(inicio));
       setFiltroDataFim(formatarISO(fim));
@@ -285,65 +287,77 @@ export default function RelatoriosClient({
   };
 
   const gerarRelatorio = async () => {
+    if (filtroDataInicio && filtroDataFim && filtroDataInicio > filtroDataFim) {
+      setErroRelatorio("A data inicial deve ser anterior ou igual à data final.");
+      return;
+    }
     setIsLoading(true);
-    setBuscou(true);
+    setErroRelatorio("");
 
     try {
-      let query = supabase
-        .from("presencas")
-        .select(
-          `
-            id,
-            aluno_id,
-            curso_id,
-            turma_id,
-            data_hora,
-            status,
-            metodo,
-            operador_id,
-            alunos(nome_completo, cpf),
-            cursos(titulo),
-            turmas(nome),
-            operadores(nome)
-          `
-        )
-        .order("data_hora", { ascending: false })
-        .limit(5000);
+      const resultadoCompleto: PresencaRelatorio[] = [];
+      const agora = new Date().toISOString();
+      for (let inicio = 0; ; inicio += 1000) {
+        let query = supabase
+          .from("presencas")
+          .select(
+            `
+              id,
+              aluno_id,
+              curso_id,
+              turma_id,
+              data_hora,
+              status,
+              metodo,
+              operador_id,
+              alunos(nome_completo, cpf),
+              cursos(titulo),
+              turmas(nome),
+              operadores(nome)
+            `
+          )
+          .order("data_hora", { ascending: false })
+          .order("id", { ascending: true })
+          .lte("data_hora", agora)
+          .range(inicio, inicio + 999);
 
-      if (filtroCurso) {
-        query = query.eq("curso_id", filtroCurso);
+        if (filtroCurso) {
+          query = query.eq("curso_id", filtroCurso);
+        }
+
+        if (filtroTurma) {
+          query = query.eq("turma_id", filtroTurma);
+        }
+
+        if (filtroOperador) query = query.eq("operador_id", filtroOperador);
+
+        if (filtroDataInicio) {
+          query = query.gte(
+            "data_hora",
+            new Date(`${filtroDataInicio}T00:00:00.000-03:00`).toISOString()
+          );
+        }
+
+        if (filtroDataFim) {
+          query = query.lte(
+            "data_hora",
+            new Date(`${filtroDataFim}T23:59:59.999-03:00`).toISOString()
+          );
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          console.error(error);
+
+          throw new Error(error.message);
+        }
+
+        resultadoCompleto.push(...((data || []) as unknown as PresencaRelatorio[]));
+        if (!data || data.length < 1000) break;
       }
 
-      if (filtroTurma) {
-        query = query.eq("turma_id", filtroTurma);
-      }
-
-      if (filtroDataInicio) {
-        query = query.gte(
-          "data_hora",
-          `${filtroDataInicio}T00:00:00.000Z`
-        );
-      }
-
-      if (filtroDataFim) {
-        query = query.lte(
-          "data_hora",
-          `${filtroDataFim}T23:59:59.999Z`
-        );
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error(error);
-
-        alert("Erro ao gerar relatório: " + error.message);
-
-        setRegistros([]);
-        return;
-      }
-
-      let resultado = (data || []) as unknown as PresencaRelatorio[];
+      let resultado = resultadoCompleto;
 
       if (filtroStatus) {
         resultado = resultado.filter(
@@ -353,14 +367,14 @@ export default function RelatoriosClient({
       }
 
       setRegistros(resultado);
+      setConsultaAplicada(chaveConsulta);
+      setBuscou(true);
     } catch (error) {
       console.error(error);
 
-      alert(
-        "Não foi possível gerar o relatório. Tente novamente."
-      );
-
+      setErroRelatorio("Não foi possível consultar os dados do relatório. Tente novamente.");
       setRegistros([]);
+      setBuscou(false);
     } finally {
       setIsLoading(false);
     }
@@ -373,14 +387,18 @@ export default function RelatoriosClient({
     setFiltroDataFim("");
     setFiltroPeriodo("");
     setFiltroStatus("");
+    setFiltroOperador("");
     setBusca("");
     setRegistros([]);
     setBuscou(false);
     setMostrarMultiplasTurmas(false);
+    setConsultaAplicada("");
+    setErroRelatorio("");
   };
 
   const registrosFiltrados = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
+    const normalizar = (valor: string) => valor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+    const termo = normalizar(busca);
 
     if (!termo) return registros;
 
@@ -390,10 +408,10 @@ export default function RelatoriosClient({
       const turma = getRelacao(registro.turmas);
 
       return (
-        aluno?.nome_completo?.toLowerCase().includes(termo) ||
-        aluno?.cpf?.toLowerCase().includes(termo) ||
-        curso?.titulo?.toLowerCase().includes(termo) ||
-        turma?.nome?.toLowerCase().includes(termo)
+        normalizar(aluno?.nome_completo || "").includes(termo) ||
+        normalizar(aluno?.cpf || "").includes(termo) ||
+        normalizar(curso?.titulo || "").includes(termo) ||
+        normalizar(turma?.nome || "").includes(termo)
       );
     });
   }, [registros, busca]);
@@ -551,103 +569,104 @@ export default function RelatoriosClient({
   }, [registrosFiltrados]);
 
   const diasComRegistro = useMemo(() => {
-    return new Set(registrosFiltrados.map((registro) => registro.data_hora.slice(0, 10))).size;
+    return new Set(registrosFiltrados.map((registro) => new Date(registro.data_hora).toLocaleDateString("en-CA", { timeZone: "America/Bahia" }))).size;
   }, [registrosFiltrados]);
 
   const mediaRegistrosPorAluno = totalParticipantes > 0
     ? (totalRegistros / totalParticipantes).toFixed(1)
     : "0";
 
-  const rankingCursos = useMemo(() => {
-    return [...resumoPorCurso].sort((a, b) => {
-      if (b.percentual !== a.percentual) return b.percentual - a.percentual;
-      return b.total - a.total;
-    });
-  }, [resumoPorCurso]);
+  const totalTurmas = useMemo(() => new Set(registrosFiltrados.map((registro) => registro.turma_id)).size, [registrosFiltrados]);
 
-  const rankingAlunos = useMemo(() => {
-    return [...resumoPorAluno].sort((a, b) => {
-      if (b.percentual !== a.percentual) return b.percentual - a.percentual;
-      return b.total - a.total;
-    });
-  }, [resumoPorAluno]);
+  const resumoPorTurma = useMemo(() => {
+    const mapa = new Map<string, { nome: string; curso: string; participantes: Set<string>; presencas: number; faltas: number }>();
+    for (const registro of registrosFiltrados) {
+      const id = registro.turma_id || `curso:${registro.curso_id}`;
+      const atual = mapa.get(id) || { nome: getRelacao(registro.turmas)?.nome || "Turma não informada", curso: getRelacao(registro.cursos)?.titulo || "Curso não informado", participantes: new Set<string>(), presencas: 0, faltas: 0 };
+      atual.participantes.add(registro.aluno_id);
+      if (normalizarStatus(registro.status) === "presente") atual.presencas++;
+      else atual.faltas++;
+      mapa.set(id, atual);
+    }
+    return [...mapa].map(([id, item]) => ({ ...item, id, participantes: item.participantes.size, total: item.presencas + item.faltas, percentual: Math.round(item.presencas / (item.presencas + item.faltas) * 100) }))
+      .sort((a, b) => a.curso.localeCompare(b.curso, "pt-BR") || a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [registrosFiltrados]);
 
-  const topCursos = rankingCursos.slice(0, 5);
-  const topAlunos = rankingAlunos.slice(0, 5);
-  const alunosComMenorFrequencia = [...rankingAlunos].reverse().slice(0, 5);
+  const graficosSelecionados = useMemo(() => {
+    const porDia = new Map<string, { presencas: number; faltas: number }>();
+    for (const registro of registrosFiltrados) {
+      const dia = new Date(registro.data_hora).toLocaleDateString("en-CA", { timeZone: "America/Bahia" });
+      const atual = porDia.get(dia) || { presencas: 0, faltas: 0 };
+      if (normalizarStatus(registro.status) === "presente") atual.presencas++;
+      else atual.faltas++;
+      porDia.set(dia, atual);
+    }
+    const todos: GraficoRelatorio[] = [
+      { id: "distribuicao", titulo: "Presenças e faltas", descricao: "Quantidade de lançamentos incluídos pelos filtros aplicados.", itens: [{ rotulo: "Total no recorte", presencas: totalPresencas, faltas: totalFaltas }] },
+      { id: "cursos", titulo: "Comparação por curso", descricao: "Até 12 cursos, ordenados pelo percentual de presença. As tabelas incluem todos os cursos.", itens: resumoPorCurso.slice(0, 12).map((item) => ({ rotulo: item.titulo, presencas: item.presencas, faltas: item.faltas })) },
+      { id: "turmas", titulo: "Comparação por turma", descricao: "Até 12 turmas, em ordem alfabética de curso e turma. As tabelas incluem todas as turmas.", itens: resumoPorTurma.slice(0, 12).map((item) => ({ rotulo: `${item.curso} - ${item.nome}`, presencas: item.presencas, faltas: item.faltas })) },
+      { id: "dias", titulo: "Evolução por dia", descricao: "Últimos 31 dias com lançamentos no recorte. Datas no horário de Brasília.", itens: [...porDia].sort(([a], [b]) => a.localeCompare(b)).slice(-31).map(([dia, item]) => ({ rotulo: dataBrasil(dia), ...item })) },
+    ];
+    return todos.filter((grafico) => configuracao.graficos.includes(grafico.id) && grafico.itens.length > 0);
+  }, [registrosFiltrados, configuracao.graficos, resumoPorCurso, resumoPorTurma, totalPresencas, totalFaltas]);
 
-  /*
-   * ================================
-   * EXPORTAÇÃO
-   * ================================
-   */
-
-  const escaparCSV = (valor: string) => {
-    return `"${String(valor).replace(/"/g, '""')}"`;
+  const montarRelatorio = (emitidoEm: string): RelatorioExportacao => {
+    const tabelas: TabelaRelatorio[] = [];
+    if (configuracao.secoes.includes("resumo")) tabelas.push({ titulo: "Resumo geral", colunas: ["Indicador", "Valor"], linhas: [
+      ["Registros", totalRegistros], ["Presenças", totalPresencas], ["Faltas", totalFaltas], ["Participantes", totalParticipantes], ["Cursos", totalCursos], ["Turmas", totalTurmas], ["Dias com registros", diasComRegistro], ["Frequência no recorte (%)", percentualPresenca],
+    ] });
+    if (configuracao.secoes.includes("cursos")) tabelas.push({ titulo: "Frequência por curso", colunas: ["Curso", "Participantes", "Presenças", "Faltas", "Registros", "Frequência (%)"], linhas: resumoPorCurso.map((item) => [item.titulo, item.participantes, item.presencas, item.faltas, item.total, item.percentual]) });
+    if (configuracao.secoes.includes("turmas")) tabelas.push({ titulo: "Frequência por turma", colunas: ["Curso", "Turma", "Participantes", "Presenças", "Faltas", "Registros", "Frequência (%)"], linhas: resumoPorTurma.map((item) => [item.curso, item.nome, item.participantes, item.presencas, item.faltas, item.total, item.percentual]) });
+    if (configuracao.secoes.includes("alunos")) tabelas.push({ titulo: "Frequência por participante", colunas: ["Participante", "CPF", "Presenças", "Faltas", "Registros", "Frequência (%)"], linhas: resumoPorAluno.map((item) => [item.nome, formatarCPF(item.cpf), item.presencas, item.faltas, item.total, item.percentual]) });
+    if (configuracao.secoes.includes("registros")) tabelas.push({ titulo: "Registros detalhados", colunas: ["Participante", "CPF", "Curso", "Turma", "Data", "Hora", "Situação", "Operador", "Método"], linhas: registrosFiltrados.map((registro) => [
+      getRelacao(registro.alunos)?.nome_completo || "Participante desconhecido", formatarCPF(getRelacao(registro.alunos)?.cpf || null), getRelacao(registro.cursos)?.titulo || "Não informado", getRelacao(registro.turmas)?.nome || "Não informada", formatarData(registro.data_hora), formatarHora(registro.data_hora), normalizarStatus(registro.status) === "falta" ? "Falta" : "Presença", getRelacao(registro.operadores)?.nome || "Não informado", registro.metodo || "Não informado",
+    ]) });
+    return {
+      titulo: configuracao.titulo.trim().replace(/\s+/g, " "), emitidoEm, tabelas, graficos: graficosSelecionados, orientacao: configuracao.orientacao,
+      filtros: [
+        `Curso: ${cursos.find((curso) => curso.id === filtroCurso)?.titulo || "Todos"}`,
+        `Turma: ${turmas.find((turma) => turma.id === filtroTurma)?.nome || "Todas"}`,
+        `Período: ${filtroDataInicio ? dataBrasil(filtroDataInicio) : "Sem limite inicial"} até ${filtroDataFim ? dataBrasil(filtroDataFim) : "Data da consulta"}`,
+        `Situação: ${filtroStatus === "presente" ? "Somente presenças" : filtroStatus === "falta" ? "Somente faltas" : "Presenças e faltas"}`,
+        `Operador: ${operadores.find((operador) => operador.id === filtroOperador)?.nome || "Todos"}`,
+        ...(busca.trim() ? [`Pesquisa: ${busca.trim()}`] : []),
+      ],
+    };
   };
+
+  const podeExportar = buscou && !filtrosPendentes && !isLoading && !exportando && registrosFiltrados.length > 0 && !!configuracao.titulo.trim() && configuracao.secoes.length > 0;
 
   const exportarCSV = () => {
-    if (registrosFiltrados.length === 0) return;
-
-    const cabecalho = [
-      "Participante",
-      "CPF",
-      "Curso",
-      "Turma",
-      "Data",
-      "Horario",
-      "Status",
-      "Operador",
-      "Metodo",
-    ];
-
-    const linhas = registrosFiltrados.map((registro) => {
-      const aluno = getRelacao(registro.alunos);
-      const curso = getRelacao(registro.cursos);
-      const turma = getRelacao(registro.turmas);
-      const operador = getRelacao(registro.operadores);
-
-      return [
-        aluno?.nome_completo || "",
-        aluno?.cpf || "",
-        curso?.titulo || "",
-        turma?.nome || "",
-        formatarData(registro.data_hora),
-        formatarHora(registro.data_hora),
-        normalizarStatus(registro.status) === "falta"
-          ? "Falta"
-          : "Presença",
-        operador?.nome || "",
-        registro.metodo || "",
-      ];
-    });
-
-    const csv = [
-      cabecalho.map(escaparCSV).join(";"),
-      ...linhas.map((linha) =>
-        linha.map(escaparCSV).join(";")
-      ),
-    ].join("\n");
-
-    const blob = new Blob(["\uFEFF" + csv], {
-      type: "text/csv;charset=utf-8;",
-    });
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = `relatorio_frequencia_${
-      new Date().toISOString().split("T")[0]
-    }.csv`;
-
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    URL.revokeObjectURL(url);
+    if (!podeExportar) return;
+    try {
+      const emitidoEm = new Date().toISOString();
+      const relatorio = montarRelatorio(emitidoEm);
+      baixarArquivo(new Blob([gerarCSVRelatorio(relatorio)], { type: "text/csv;charset=utf-8;" }), nomeArquivoRelatorio(relatorio.titulo, emitidoEm, "csv"));
+      setUltimaEmissao(emissaoBrasil(emitidoEm));
+      setErroRelatorio("");
+    } catch {
+      setErroRelatorio("Não foi possível exportar o CSV. Tente novamente.");
+    }
   };
 
+  const exportarPDF = async () => {
+    if (!podeExportar) return;
+    setExportando(true);
+    setErroRelatorio("");
+    try {
+      const emitidoEm = new Date().toISOString();
+      const relatorio = montarRelatorio(emitidoEm);
+      const { criarPDFRelatorio } = await import("@/lib/relatorios-pdf");
+      const pdf = criarPDFRelatorio(relatorio);
+      baixarArquivo(new Blob([pdf.output("arraybuffer")], { type: "application/pdf" }), nomeArquivoRelatorio(relatorio.titulo, emitidoEm, "pdf"));
+      setUltimaEmissao(emissaoBrasil(emitidoEm));
+    } catch (erro) {
+      console.error("Erro na exportação PDF:", erro);
+      setErroRelatorio("Não foi possível exportar o PDF. Tente novamente ou escolha um período menor.");
+    } finally {
+      setExportando(false);
+    }
+  };
   return (
     <div className="space-y-6 pb-10">
       {/* CABEÇALHO */}
@@ -659,11 +678,11 @@ export default function RelatoriosClient({
 
           <div>
             <h1 className="text-2xl font-bold text-slate-900">
-              Relatório de Frequência
+              Relatórios
             </h1>
 
             <p className="text-sm text-slate-500">
-              Consulte presenças e faltas por período, curso e turma.
+              Monte relatórios de frequência com os dados e gráficos que você precisa.
             </p>
           </div>
         </div>
@@ -677,7 +696,7 @@ export default function RelatoriosClient({
 
             <div>
               <h2 className="font-semibold text-slate-900">
-                Filtros
+                1. Defina os filtros
               </h2>
 
               <p className="text-xs text-slate-500">
@@ -704,12 +723,12 @@ export default function RelatoriosClient({
                 {label}
               </button>
             ))}
-            {(filtroCurso || filtroTurma || filtroStatus || filtroDataInicio || filtroDataFim || busca) && (
+            {(filtroCurso || filtroTurma || filtroStatus || filtroOperador || filtroDataInicio || filtroDataFim || busca) && (
               <span className="ml-auto text-xs text-slate-400">Filtros personalizados ativos</span>
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             {/* CURSO */}
             <div>
               <label className="mb-1.5 block text-xs font-semibold text-slate-600">
@@ -717,6 +736,7 @@ export default function RelatoriosClient({
               </label>
 
               <select
+                aria-label="Curso"
                 value={filtroCurso}
                 onChange={(event) => {
                   setFiltroCurso(event.target.value);
@@ -741,6 +761,7 @@ export default function RelatoriosClient({
               </label>
 
               <select
+                aria-label="Turma"
                 value={filtroTurma}
                 onChange={(event) =>
                   setFiltroTurma(event.target.value)
@@ -764,6 +785,7 @@ export default function RelatoriosClient({
               </label>
 
               <select
+                aria-label="Situação"
                 value={filtroStatus}
                 onChange={(event) =>
                   setFiltroStatus(event.target.value)
@@ -773,6 +795,13 @@ export default function RelatoriosClient({
                 <option value="">Presenças e faltas</option>
                 <option value="presente">Somente presenças</option>
                 <option value="falta">Somente faltas</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="filtro-operador-relatorio" className="mb-1.5 block text-xs font-semibold text-slate-600">Operador</label>
+              <select id="filtro-operador-relatorio" value={filtroOperador} onChange={(event) => setFiltroOperador(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white">
+                <option value="">Todos os operadores</option>
+                {operadores.map((operador) => <option key={operador.id} value={operador.id}>{operador.nome}</option>)}
               </select>
             </div>
           </div>
@@ -785,6 +814,7 @@ export default function RelatoriosClient({
               </label>
 
               <select
+                aria-label="Período rápido"
                 value={filtroPeriodo}
                 onChange={handlePeriodoChange}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white"
@@ -806,6 +836,7 @@ export default function RelatoriosClient({
                 <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
                 <input
+                  aria-label="Data inicial"
                   type="date"
                   value={filtroDataInicio}
                   onChange={(event) => {
@@ -827,6 +858,7 @@ export default function RelatoriosClient({
                 <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
                 <input
+                  aria-label="Data final"
                   type="date"
                   value={filtroDataFim}
                   onChange={(event) => {
@@ -849,6 +881,7 @@ export default function RelatoriosClient({
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
               <input
+                aria-label="Pesquisar nos resultados"
                 type="text"
                 value={busca}
                 onChange={(event) => setBusca(event.target.value)}
@@ -862,6 +895,7 @@ export default function RelatoriosClient({
             {filtroCurso && <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">Curso: {cursos.find((c) => c.id === filtroCurso)?.titulo}</span>}
             {filtroTurma && <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">Turma: {turmas.find((t) => t.id === filtroTurma)?.nome}</span>}
             {filtroStatus && <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Situação: {filtroStatus === "falta" ? "Faltas" : "Presenças"}</span>}
+            {filtroOperador && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">Operador: {operadores.find((operador) => operador.id === filtroOperador)?.nome}</span>}
             {filtroDataInicio && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">De: {formatarData(filtroDataInicio)}</span>}
             {filtroDataFim && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">Até: {formatarData(filtroDataFim)}</span>}
           </div>
@@ -876,7 +910,7 @@ export default function RelatoriosClient({
             >
               <BarChart3 className="h-4 w-4" />
 
-              {isLoading ? "Gerando..." : "Gerar relatório"}
+              {isLoading ? "Consultando..." : "Atualizar prévia"}
             </button>
 
             <button
@@ -889,26 +923,21 @@ export default function RelatoriosClient({
               Limpar
             </button>
 
-            {registrosFiltrados.length > 0 && (
-              <button
-                type="button"
-                onClick={exportarCSV}
-                className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
-              >
-                <Download className="h-4 w-4" />
-
-                Exportar CSV
-              </button>
-            )}
           </div>
         </div>
       </section>
 
+      {erroRelatorio && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{erroRelatorio}</div>}
+      {filtrosPendentes && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Os filtros foram alterados. Clique em “Atualizar prévia” para consultar os dados antes de exportar.</div>}
+
+      <ConfiguracaoRelatorio valor={configuracao} onChange={setConfiguracao} pronto={buscou} carregando={isLoading} exportando={exportando} pendente={filtrosPendentes} quantidade={registrosFiltrados.length} emitidoEm={ultimaEmissao} onPDF={exportarPDF} onCSV={exportarCSV} />
+
       {/* RESULTADOS */}
-      {buscou && (
+      {buscou && !filtrosPendentes && !isLoading && (
         <>
+          <div className="border-b border-slate-200 pb-3"><p className="mb-1 text-xs font-semibold uppercase tracking-wide text-blue-600">3. Prévia do relatório</p><h2 className="text-xl font-bold text-slate-900">{configuracao.titulo.trim() || "Relatório sem título"}</h2><p className="mt-1 text-xs text-slate-500">Os blocos abaixo serão incluídos na exportação. Percentuais calculados sobre os registros do recorte.</p></div>
           {/* CARDS */}
-          <section>
+          {configuracao.secoes.includes("resumo") && <section>
             <div className="mb-3">
               <h2 className="font-semibold text-slate-900">
                 Resumo da frequência
@@ -1013,7 +1042,7 @@ export default function RelatoriosClient({
                 <p className="mt-1 text-2xl font-bold text-orange-800">{mediaRegistrosPorAluno}</p>
               </div>
             </div>
-          </section>
+          </section>}
 
           {/* ALUNOS EM MAIS DE UM CURSO */}
           <section className="rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 via-white to-white p-5 shadow-sm">
@@ -1021,8 +1050,8 @@ export default function RelatoriosClient({
               <div className="flex items-start gap-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600"><UserPlus className="h-6 w-6" /></div>
                 <div>
-                  <h2 className="font-bold text-slate-900">Alunos em mais de uma turma</h2>
-                  <p className="mt-1 text-sm text-slate-500">Veja quem possui múltiplas matrículas e quais são suas turmas.</p>
+                  <h2 className="font-bold text-slate-900">Consulta adicional: alunos em mais de um curso</h2>
+                  <p className="mt-1 text-sm text-slate-500">Visão geral dos cadastros, fora do recorte de frequência. Não incluída na exportação.</p>
                 </div>
               </div>
               <button type="button" onClick={() => setMostrarMultiplasTurmas(true)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700">
@@ -1033,97 +1062,7 @@ export default function RelatoriosClient({
             </div>
           </section>
 
-          {/* RANKINGS DE FREQUÊNCIA */}
-          <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-100 px-5 py-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <h2 className="font-bold text-slate-900">Ranking de frequência por curso</h2>
-                    <p className="mt-1 text-xs text-slate-500">Quanto maior a porcentagem, maior a presença registrada.</p>
-                  </div>
-                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">Top 5</span>
-                </div>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {topCursos.length === 0 ? (
-                  <p className="px-5 py-8 text-center text-sm text-slate-400">Gere um relatório para ver o ranking.</p>
-                ) : topCursos.map((curso, index) => (
-                  <div key={curso.cursoId} className="px-5 py-4">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-700">{index + 1}º</span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="truncate text-sm font-bold text-slate-900">{curso.titulo}</p>
-                          <span className="shrink-0 text-sm font-extrabold text-emerald-700">{curso.percentual}%</span>
-                        </div>
-                        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
-                          <div className="h-full rounded-full bg-emerald-500" style={{ width: `${curso.percentual}%` }} />
-                        </div>
-                        <p className="mt-1.5 text-xs text-slate-500">{curso.presencas} presenças · {curso.faltas} faltas · {curso.participantes} alunos</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-100 px-5 py-4">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <h2 className="font-bold text-slate-900">Ranking de frequência por aluno</h2>
-                    <p className="mt-1 text-xs text-slate-500">Baseado nos registros de presença e falta do período.</p>
-                  </div>
-                  <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">Top 5</span>
-                </div>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {topAlunos.length === 0 ? (
-                  <p className="px-5 py-8 text-center text-sm text-slate-400">Gere um relatório para ver o ranking.</p>
-                ) : topAlunos.map((aluno, index) => (
-                  <div key={aluno.alunoId} className="px-5 py-4">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-700">{index + 1}º</span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="truncate text-sm font-bold text-slate-900">{aluno.nome}</p>
-                          <span className={`shrink-0 text-sm font-extrabold ${aluno.percentual >= 75 ? "text-emerald-700" : "text-red-700"}`}>{aluno.percentual}%</span>
-                        </div>
-                        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
-                          <div className={`h-full rounded-full ${aluno.percentual >= 75 ? "bg-emerald-500" : "bg-red-500"}`} style={{ width: `${aluno.percentual}%` }} />
-                        </div>
-                        <p className="mt-1.5 text-xs text-slate-500">{aluno.presencas} presenças · {aluno.faltas} faltas · {aluno.total} registros</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {alunosComMenorFrequencia.length > 0 && (
-            <section className="rounded-2xl border border-amber-200 bg-amber-50/40 p-5 shadow-sm">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100">
-                  <TrendingDown className="h-5 w-5 text-amber-700" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="font-bold text-slate-900">Alunos que precisam de atenção</h2>
-                  <p className="mt-1 text-xs text-slate-600">Menores frequências entre os alunos que possuem registros no período.</p>
-                  <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-                    {alunosComMenorFrequencia.map((aluno) => (
-                      <div key={aluno.alunoId} className="rounded-xl border border-amber-100 bg-white p-3">
-                        <p className="truncate text-sm font-semibold text-slate-800">{aluno.nome}</p>
-                        <p className="mt-1 text-lg font-extrabold text-red-700">{aluno.percentual}%</p>
-                        <p className="text-[11px] text-slate-500">{aluno.faltas} falta(s) · {aluno.presencas} presença(s)</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
+          <GraficosRelatorio graficos={graficosSelecionados} />
 
           {/* SEM RESULTADOS */}
           {registrosFiltrados.length === 0 && (
@@ -1143,7 +1082,7 @@ export default function RelatoriosClient({
           )}
 
           {/* RESUMO POR CURSO */}
-          {resumoPorCurso.length > 0 && (
+          {configuracao.secoes.includes("cursos") && resumoPorCurso.length > 0 && (
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                 <div className="flex items-center gap-3">
@@ -1240,7 +1179,16 @@ export default function RelatoriosClient({
           )}
 
           {/* RESUMO POR PARTICIPANTE */}
-          {resumoPorAluno.length > 0 && (
+          {configuracao.secoes.includes("turmas") && resumoPorTurma.length > 0 && (
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 px-5 py-4"><h2 className="font-semibold text-slate-900">Frequência por turma</h2><p className="text-xs text-slate-500">Participantes e lançamentos de cada turma no recorte.</p></div>
+              <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead><tr>{["Curso", "Turma", "Participantes", "Presenças", "Faltas", "Frequência"].map((coluna) => <th key={coluna} className="px-5 py-3">{coluna}</th>)}</tr></thead>
+                <tbody className="divide-y divide-slate-100">{resumoPorTurma.map((turma) => <tr key={turma.id}><td className="px-5 py-4 text-slate-700">{turma.curso}</td><td className="px-5 py-4 font-semibold text-slate-800">{turma.nome}</td><td className="px-5 py-4 text-slate-600">{turma.participantes}</td><td className="px-5 py-4 text-emerald-700">{turma.presencas}</td><td className="px-5 py-4 text-red-700">{turma.faltas}</td><td className="px-5 py-4 text-slate-700">{turma.percentual}%</td></tr>)}</tbody>
+              </table></div>
+            </section>
+          )}
+
+          {configuracao.secoes.includes("alunos") && resumoPorAluno.length > 0 && (
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                 <div className="flex items-center gap-3">
@@ -1347,7 +1295,7 @@ export default function RelatoriosClient({
           )}
 
           {/* DETALHAMENTO */}
-          {registrosFiltrados.length > 0 && (
+          {configuracao.secoes.includes("registros") && registrosFiltrados.length > 0 && (
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                 <div className="flex items-center gap-3">

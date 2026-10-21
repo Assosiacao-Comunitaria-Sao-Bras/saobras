@@ -54,7 +54,7 @@ export function Sidebar() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Abrir menu"
-        className="fixed left-3 top-[11px] z-30 flex h-11 w-11 items-center justify-center rounded-lg border border-blue-100 bg-white text-[#1674d2] shadow-sm md:hidden"
+        className="fixed left-[44px] top-[11px] z-30 flex h-11 w-11 items-center justify-center rounded-lg border border-blue-100 bg-white text-[#1674d2] shadow-sm md:hidden"
       >
         <Menu size={22} />
       </button>
@@ -86,7 +86,7 @@ export function Sidebar() {
         </button>
 
         {/* LOGOTIPOS */}
-        <div className="relative shrink-0 px-6 pt-5 md:px-3 md:pt-4 lg:px-[24px] lg:pt-[20px]">
+        <div className="sidebar-brand relative shrink-0 px-6 pt-5 md:px-3 md:pt-4 lg:px-[24px] lg:pt-[20px]">
           <div className="block md:hidden lg:block">
             <div className="flex h-[58px] items-center justify-center">
               <Image

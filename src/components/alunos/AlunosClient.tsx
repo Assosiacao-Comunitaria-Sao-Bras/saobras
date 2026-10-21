@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   X,
   Edit2,
@@ -11,11 +11,12 @@ import {
   Mail,
   Save,
   AlertCircle,
-  Search,
   BookOpen,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { AlunosOverview, StatusAlunoBadge } from "./AlunosOverview";
+import { calcularSituacaoAluno, indexarFrequencias, type RegistroFrequenciaAluno } from "@/lib/alunos-situacao";
 
 export type Aluno = {
   id: string;
@@ -44,6 +45,8 @@ export type Matricula = {
   curso_id: string;
   turma_id?: string | null;
   data_matricula?: string | null;
+  desistiu_em?: string | null;
+  turmas?: { nome: string } | { nome: string }[] | null;
   cursos?: {
     titulo: string;
   } | { titulo: string }[] | null;
@@ -60,11 +63,20 @@ const AVAILABLE_TAGS = [
   },
 ];
 
-export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
+export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia }: {
+  alunos: Aluno[];
+  registrosFrequencia?: RegistroFrequenciaAluno[];
+  erroFrequencia?: string;
+}) {
   const router = useRouter();
 
   const [selectedAluno, setSelectedAluno] = useState<Aluno | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [limiteFrequencia, setLimiteFrequencia] = useState(30);
+  const frequencias = useMemo(() => indexarFrequencias(registrosFrequencia), [registrosFrequencia]);
+  const [salvandoDesistencia, setSalvandoDesistencia] = useState<string | null>(null);
+  const [erroMatriculas, setErroMatriculas] = useState("");
+  const [erroDesistencia, setErroDesistencia] = useState("");
+  const [confirmarDesistencia, setConfirmarDesistencia] = useState<Matricula | null>(null);
 
   // Estados para controlar os fluxos do modal
   const [isEditing, setIsEditing] = useState(false);
@@ -100,19 +112,26 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
    * ============================================================
    */
   useEffect(() => {
+    let ativo = true;
     if (selectedAluno && !isEditing) {
       const fetchMatriculas = async () => {
         setIsLoadingMatriculas(true);
+        setErroMatriculas("");
+        setMatriculas([]);
 
         const { data, error } = await supabase
           .from("matriculas")
-          .select("id, curso_id, turma_id, data_matricula, cursos(titulo)")
-          .eq("aluno_id", selectedAluno.id);
+          .select("*, cursos(titulo), turmas(nome)")
+          .eq("aluno_id", selectedAluno.id)
+          .order("data_matricula", { ascending: false });
+
+        if (!ativo) return;
 
         if (!error && data) {
           setMatriculas(data as Matricula[]);
         } else if (error) {
           console.error("Erro ao carregar matrículas:", error.message);
+          setErroMatriculas("Não foi possível carregar as matrículas deste aluno.");
           setMatriculas([]);
         }
 
@@ -121,6 +140,7 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
 
       fetchMatriculas();
     }
+    return () => { ativo = false; };
   }, [selectedAluno, isEditing]);
 
   /*
@@ -286,21 +306,6 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
     return v;
   };
 
-  const maskCpfPreview = (cpf: string | null) => {
-    if (!cpf) return "Não informado";
-
-    const digits = cpf.replace(/\D/g, "");
-
-    if (digits.length === 11) {
-      return `***.***.${digits.slice(6, 9)}-${digits.slice(
-        9,
-        11
-      )}`;
-    }
-
-    return "***.***.***-**";
-  };
-
   /*
    * ============================================================
    * INICIAR NOVO CADASTRO
@@ -360,6 +365,8 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
     setShowDiscardConfirm(false);
     setMatriculas([]);
     setFormData({});
+    setErroDesistencia("");
+    setConfirmarDesistencia(null);
   };
 
   /*
@@ -373,6 +380,8 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
       e.preventDefault();
       e.stopPropagation();
     }
+
+    if (salvandoDesistencia) return;
 
     if (isEditing || isCreating) {
       setShowDiscardConfirm(true);
@@ -400,6 +409,29 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
 
   const cancelDiscard = () => {
     setShowDiscardConfirm(false);
+  };
+
+  const salvarDesistencia = async (matricula: Matricula) => {
+    if (!selectedAluno || salvandoDesistencia) return;
+    setSalvandoDesistencia(matricula.id);
+    setErroDesistencia("");
+    try {
+      const { data, error } = await supabase.from("matriculas")
+        .update({ desistiu_em: matricula.desistiu_em ? null : new Date().toISOString() })
+        .eq("id", matricula.id).eq("aluno_id", selectedAluno.id)
+        .select("*, cursos(titulo), turmas(nome)").single();
+      if (error) throw error;
+      const atualizada = data as Matricula;
+      const novasMatriculas = matriculas.map((item) => item.id === matricula.id ? atualizada : item);
+      setMatriculas(novasMatriculas);
+      setSelectedAluno((anterior) => anterior ? { ...anterior, matriculas: novasMatriculas } : anterior);
+      setConfirmarDesistencia(null);
+      router.refresh();
+    } catch {
+      setErroDesistencia("Não foi possível salvar a situação da matrícula. Tente novamente.");
+    } finally {
+      setSalvandoDesistencia(null);
+    }
   };
 
   /*
@@ -815,32 +847,9 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
   const showModal =
     !!selectedAluno || isCreating;
 
-  /*
-   * ============================================================
-   * FILTRO
-   * ============================================================
-   */
-
-  const filteredAlunos =
-    (alunos || []).filter((aluno) => {
-      const term =
-        searchTerm.toLowerCase();
-
-      return (
-        (
-          aluno.nome_completo?.toLowerCase() ||
-          ""
-        ).includes(term) ||
-        (
-          aluno.cpf?.toLowerCase() ||
-          ""
-        ).includes(term) ||
-        (
-          aluno.telefone?.toLowerCase() ||
-          ""
-        ).includes(term)
-      );
-    });
+  const situacaoSelecionada = selectedAluno ? calcularSituacaoAluno(
+    selectedAluno.matriculas ?? [], frequencias.get(selectedAluno.id) ?? [], limiteFrequencia,
+  ) : null;
 
   /*
    * ============================================================
@@ -865,123 +874,21 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">
-          Gestão de Alunos
-        </h1>
-
-        <button
-          type="button"
-          onClick={startCreating}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
-        >
-          + Novo Aluno
-        </button>
-      </div>
-
-      <div className="mb-6 flex gap-4 items-center">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-
-          <input
-            type="text"
-            placeholder="Buscar por nome, CPF ou telefone..."
-            value={searchTerm}
-            onChange={(e) =>
-              setSearchTerm(e.target.value)
-            }
-            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors shadow-sm"
-          />
-        </div>
-      </div>
-
-      <div className="bg-white border border-slate-200 rounded-md shadow-sm overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-medium">
-            <tr>
-              <th className="px-6 py-4">
-                Nome Completo
-              </th>
-
-              <th className="px-6 py-4">
-                CPF
-              </th>
-
-              <th className="px-6 py-4">
-                Bairro
-              </th>
-
-              <th className="px-6 py-4">
-                Telefone
-              </th>
-
-              <th className="px-6 py-4">
-                Status
-              </th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-slate-200">
-            {filteredAlunos.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="px-6 py-12 text-center text-slate-500"
-                >
-                  {searchTerm
-                    ? "Nenhum aluno encontrado para sua busca."
-                    : "Nenhum aluno cadastrado no momento."}
-                </td>
-              </tr>
-            ) : (
-              filteredAlunos.map((aluno) => (
-                <tr
-                  key={aluno.id}
-                  onClick={() =>
-                    setSelectedAluno(aluno)
-                  }
-                  className="hover:bg-slate-50 transition-colors cursor-pointer"
-                >
-                  <td className="px-6 py-4 text-slate-900 font-medium">
-                    {aluno.nome_completo}
-                  </td>
-
-                  <td className="px-6 py-4 text-slate-500">
-                    {maskCpfPreview(aluno.cpf)}
-                  </td>
-
-                  <td className="px-6 py-4 text-slate-500">
-                    {aluno.bairro ||
-                      "Não informado"}
-                  </td>
-
-                  <td className="px-6 py-4 text-slate-500">
-                    {aluno.telefone
-                      ? formatPhone(
-                          aluno.telefone
-                        )
-                      : "Não informado"}
-                  </td>
-
-                  <td className="px-6 py-4">
-                    {aluno.matriculas &&
-                    aluno.matriculas.length > 0 ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                        Ativo
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
-                        Não Ativo
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
+      <AlunosOverview
+        alunos={alunos}
+        frequencias={frequencias}
+        erroFrequencia={erroFrequencia}
+        limite={limiteFrequencia}
+        onLimiteChange={setLimiteFrequencia}
+        onSelect={(aluno) => {
+          setSelectedAluno(aluno);
+          setMatriculas([]);
+          setIsLoadingMatriculas(true);
+          setErroDesistencia("");
+          setErroMatriculas("");
+        }}
+        onCreate={startCreating}
+      />
       {showModal && (
         <div
           className="fixed inset-0 bg-slate-900/60 z-40 flex items-center justify-center p-4 transition-opacity"
@@ -1037,6 +944,18 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
                       </p>
                     </div>
                   </div>
+
+                  {situacaoSelecionada && (
+                    <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                      <StatusAlunoBadge status={situacaoSelecionada.status} />
+                      <p className="mt-2 text-sm text-slate-600">
+                        {erroFrequencia ? "A frequência está indisponível no momento." : situacaoSelecionada.percentual === null
+                          ? "Sem chamadas registradas nas matrículas sem desistência."
+                          : `${situacaoSelecionada.percentual.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% de frequência: ${situacaoSelecionada.presentes} presença(s) e ${situacaoSelecionada.faltas} falta(s). Limite: ${limiteFrequencia}%.`}
+                      </p>
+                      {situacaoSelecionada.desistencias > 0 && <p className="mt-2 flex items-start gap-2 text-sm font-medium text-red-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />Aluno com desistência registrada em {situacaoSelecionada.desistencias} matrícula(s). Consulte os cursos abaixo.</p>}
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-6">
@@ -1217,11 +1136,14 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
                       Matrículas do Aluno
                     </h4>
 
+                    {erroDesistencia && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erroDesistencia}</p>}
+                    {erroMatriculas && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erroMatriculas}</p>}
+
                     {isLoadingMatriculas ? (
                       <div className="text-sm text-slate-500 animate-pulse bg-slate-50 p-4 rounded-md border border-slate-100 text-center">
                         Carregando matrículas...
                       </div>
-                    ) : matriculas.length ===
+                    ) : erroMatriculas ? null : matriculas.length ===
                       0 ? (
                       <div className="bg-slate-50 p-4 rounded-md border border-slate-100 text-sm text-slate-500 text-center">
                         Este aluno não possui matrículas no momento.
@@ -1241,9 +1163,7 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
                                       "Curso não especificado"}
                                   </p>
 
-                                  <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-blue-100 text-blue-800">
-                                    Matrícula
-                                  </span>
+                                  <StatusAlunoBadge status={calcularSituacaoAluno([mat], frequencias.get(selectedAluno.id) ?? [], limiteFrequencia).status} />
                                 </div>
 
                                 <p className="text-xs text-slate-500">
@@ -1262,7 +1182,23 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
                                     )}
                                   </p>
                                 )}
+                                <p className="mt-2 text-xs text-slate-500">Turma: {(Array.isArray(mat.turmas) ? mat.turmas[0]?.nome : mat.turmas?.nome) || "Não informada"}</p>
+                                {mat.desistiu_em && <p className="mt-2 text-xs font-medium text-red-700">Desistência registrada em {new Date(mat.desistiu_em).toLocaleDateString("pt-BR", { timeZone: "America/Bahia" })}</p>}
                               </div>
+
+                              {Object.prototype.hasOwnProperty.call(mat, "desistiu_em") ? (
+                                <div className="mt-4 border-t border-slate-100 pt-3">
+                                  {confirmarDesistencia?.id === mat.id ? (
+                                    <div>
+                                      <p className="mb-2 text-xs text-slate-600">{mat.desistiu_em ? "Cancelar o registro de desistência desta matrícula?" : "Confirmar que o aluno desistiu deste curso? O histórico de frequência será preservado."}</p>
+                                      <div className="flex gap-3">
+                                        <button type="button" disabled={!!salvandoDesistencia} onClick={() => salvarDesistencia(mat)} className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{salvandoDesistencia === mat.id ? "Salvando..." : "Confirmar"}</button>
+                                        <button type="button" disabled={!!salvandoDesistencia} onClick={() => setConfirmarDesistencia(null)} className="px-2 py-2 text-xs text-slate-500 disabled:opacity-50">Voltar</button>
+                                      </div>
+                                    </div>
+                                  ) : <button type="button" disabled={!!salvandoDesistencia} onClick={() => setConfirmarDesistencia(mat)} className={`text-xs font-semibold hover:underline disabled:opacity-50 ${mat.desistiu_em ? "text-blue-600" : "text-red-600"}`}>{mat.desistiu_em ? "Cancelar registro de desistência" : "Registrar desistência"}</button>}
+                                </div>
+                              ) : <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-amber-700">O registro de desistência estará disponível após a atualização do sistema.</p>}
                             </div>
                           )
                         )}
@@ -1734,6 +1670,7 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
                   <button
                     type="button"
                     onClick={handleDeleteClick}
+                    disabled={!!salvandoDesistencia}
                     className="bg-white border border-red-200 hover:bg-red-50 text-red-600 px-4 py-2 rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -1743,6 +1680,7 @@ export function AlunosClient({ alunos }: { alunos: Aluno[] }) {
                   <button
                     type="button"
                     onClick={startEditing}
+                    disabled={!!salvandoDesistencia || isLoadingMatriculas || !!erroMatriculas}
                     className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-colors"
                   >
                     <Edit2 className="w-4 h-4" />

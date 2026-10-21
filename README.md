@@ -1,5 +1,38 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Gestão de alunos
+
+A aba de alunos oferece cartões com nome e status e a opção de tabela completa.
+Os filtros de busca, status, curso e turma podem ser combinados. O limite de
+frequência da visualização começa em 30% e pode ser alterado para 40%.
+
+A frequência considera presenças e faltas registradas nas matrículas sem
+desistência, desde o dia da matrícula, no fuso America/Bahia. Chamadas duplicadas
+por aluno, turma e dia usam o registro mais recente. Sem chamadas, ou abaixo do
+limite, o aluno permanece matriculado. Sem matrícula, aparece como cadastro
+inativo. Baixa frequência não implica desistência.
+
+Para habilitar o registro e o cancelamento de desistência por matrícula, aplique
+`supabase/migrations/202610210001_matriculas_desistencia.sql` no banco Supabase
+antes da publicação. A migração adiciona a coluna opcional `desistiu_em`, preserva
+os dados existentes e mantém as políticas de acesso da tabela. Pode ser aplicada
+pelo fluxo de migrações do projeto ou pelo SQL Editor do Supabase com uma conta
+administradora. A aplicação continua listando alunos e calculando frequência
+antes da migração, mas não oferece a gravação de desistências até sua aplicação.
+
+Um aluno que desistiu de todas as matrículas aparece como desistente. Se ainda
+possui outra matrícula sem desistência, mantém o status calculado nessa matrícula
+e recebe um alerta adicional. O filtro por curso/turma calcula a situação apenas
+nas matrículas selecionadas.
+
+Para validar as regras de classificação:
+
+```bash
+node --experimental-strip-types --test tests/alunos-situacao.test.mjs
+```
+
+Esse comando requer Node.js 22.6 ou superior.
+
 ## Getting Started
 
 First, run the development server:
