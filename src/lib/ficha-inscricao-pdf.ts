@@ -64,7 +64,6 @@ const CONDICOES = [
   "9º - Os avisos serão afixados no Foyer do Polo de ciência e tecnologia São Brás. Eventualmente poderão ser fornecidos via WhatsApp;",
   "10º - A turma só será mantida caso haja no número mínimo de cinco alunos(as) frequentando;",
   "11º - O Polo de ciência e tecnologia São Brás fornecerão água potável aos frequentadores, que deverão trazer seu próprio copo;",
-  "12º - Após três faltas não justificadas o aluno perderá a vaga e ficará impossibilitado de se inscrever no semestre seguinte.",
 ];
 
 const DECLARACAO =
@@ -360,10 +359,10 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
   doc.setLineWidth(0.4);
   doc.rect(MARGEM_ESQ, topo, LARGURA, base - topo);
   fonte("bold", 9, AZUL);
-  doc.text(`COMPROVANTE DE INSCRIÇÃO - FUNDAÇÃO SÃO BRÁS`, MEIO, topo + 5.4, { align: "center" });
+  doc.text("COMPROVANTE DE INSCRIÇÃO", MEIO, topo + 5.4, { align: "center" });
   linha(MARGEM_ESQ, topo + 8, MARGEM_DIR, 0.3, AZUL);
 
-  const oficina = [dados.curso, dados.turma?.nome].filter(Boolean).join(" - ");
+  const curso = [dados.curso, dados.turma?.nome].filter(Boolean).join(" - ");
   const { dia: d, mes: m, ano: a } = partesDataBahia(dados.dataMatricula);
   const dataCurta = `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${a}`;
 
@@ -373,12 +372,11 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
     const inicio = x + doc.getTextWidth(rotulo) + 1.5;
     if (valor) doc.text(ajustar(valor, largura - (inicio - x), "normal", 8.5), inicio, yy);
   };
-  // Nome e oficina usam toda a largura até o logo, para não cortar nomes longos.
-  rotuloValor("NOME:", aluno.nome_completo, MARGEM_ESQ + 2, topo + 13.5, 150);
-  rotuloValor("OFICINA:", oficina, MARGEM_ESQ + 2, topo + 18.5, 150);
+  // Nome à esquerda; curso à direita, logo acima da data.
+  rotuloValor("NOME:", aluno.nome_completo, MARGEM_ESQ + 2, topo + 13.5, 100);
+  rotuloValor("CURSO:", curso, 110, topo + 18.5, 82);
   rotuloValor("FUNCIONÁRIO:", dados.operador ?? "", MARGEM_ESQ + 2, topo + 23.5, 92);
   rotuloValor("DATA:", dataCurta, 110, topo + 23.5, 58);
-  if (logos.fundacao) doc.addImage(logos.fundacao, "PNG", MARGEM_DIR - 27, topo + 10, 25, 10.4, undefined, "FAST");
 
   linha(MARGEM_ESQ, base - 3.9, MARGEM_DIR, 0.2, CINZA_LINHA);
   fonte("normal", 6.8, CINZA_TEXTO);
