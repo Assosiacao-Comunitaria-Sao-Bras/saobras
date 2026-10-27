@@ -1040,7 +1040,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                     const turmasNoDia = getTurmasForCell(horario.label, dia);
                     return (
                       <td key={dia} className="p-2 border-r border-slate-200 align-top bg-white min-h-[140px] h-[140px]">
-                        <div className="w-full h-full flex flex-col gap-2 min-h-[100px]">
+                        <div className="w-full flex flex-col gap-2 min-h-[124px]">
                           {turmasNoDia.map(turma => {
                             const turmaColor = COLOR_THEMES[getColorForId(turma.curso_id)];
                             const match = turma.nome.match(/\b([A-Za-z])\b/);
@@ -1050,7 +1050,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                               <div 
                                 key={turma.id} 
                                 onClick={() => { setEditingTurma({...turma, horario: getHorarioLabel(turma)}); setIsTurmaModalOpen(true); }} 
-                                className={`group relative overflow-hidden flex-1 flex flex-col items-start justify-center p-3 rounded-md cursor-pointer transition-all text-left border-l-4 shadow-sm ${turmaColor.gridCard}`}
+                                className={`group relative overflow-hidden flex-auto shrink-0 flex flex-col items-start justify-center p-3 rounded-md cursor-pointer transition-all text-left border-l-4 shadow-sm ${turmaColor.gridCard}`}
                               >
                                 {watermark && (
                                   <div className="absolute -right-2 -bottom-4 text-7xl font-black text-black opacity-10 pointer-events-none select-none z-0">
@@ -1068,8 +1068,8 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                                   <Archive className="w-3.5 h-3.5" />
                                 </button>
                                 <div className="font-bold text-slate-800 text-sm leading-tight mb-1 pr-5 relative z-10">{turma.nome}</div>
-                                <div className={`text-xs font-medium line-clamp-1 mb-2 relative z-10 ${turmaColor.gridTextSub}`}>{(Array.isArray(turma.cursos) ? turma.cursos[0]?.titulo : turma.cursos?.titulo) || "Curso Indefinido"}</div>
-                                {turma.professor && <div className={`text-[11px] line-clamp-1 mb-2 relative z-10 ${turmaColor.gridTextSub}`}>Prof. {turma.professor}</div>}
+                                <div className={`text-xs font-medium break-words mb-2 relative z-10 ${turmaColor.gridTextSub}`}>{(Array.isArray(turma.cursos) ? turma.cursos[0]?.titulo : turma.cursos?.titulo) || "Curso Indefinido"}</div>
+                                {turma.professor && <div className={`text-[11px] break-words mb-2 relative z-10 ${turmaColor.gridTextSub}`}>Prof. {turma.professor}</div>}
                                 <div className={`mt-auto inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border relative z-10 ${turmaColor.badge}`}>
                                   {getVagasDisponiveis(turma)} vagas · {vagasOcupadas[turma.id] || 0} alunos
                                 </div>
