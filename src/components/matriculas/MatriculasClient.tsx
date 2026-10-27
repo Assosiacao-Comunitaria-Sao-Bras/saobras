@@ -3,6 +3,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 import {
+  baixarFichaAposMatricula,
+  baixarFichaPorMatricula,
+} from "@/lib/ficha-inscricao";
+import {
   Plus,
   Trash2,
   Search,
@@ -10,6 +14,7 @@ import {
   X,
   Loader2,
   Calendar,
+  FileDown,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -91,6 +96,8 @@ export default function MatriculasClient({
   const [isLoadingFormDados, setIsLoadingFormDados] = useState(false);
 
   const [isSaving, setIsSaving] = useState(false);
+
+  const [baixandoFichaId, setBaixandoFichaId] = useState<string | null>(null);
 
   // Form states
   const [selectedAluno, setSelectedAluno] = useState("");
@@ -247,10 +254,39 @@ export default function MatriculasClient({
       setIsModalOpen(false);
 
       router.refresh();
+
+      const erroFicha = await baixarFichaAposMatricula(
+        selectedAluno,
+        selectedTurma
+      );
+
+      if (erroFicha) {
+        alert(
+          "A matrícula foi salva, mas não foi possível gerar a ficha de inscrição: " +
+            erroFicha +
+            "\n\nVocê pode baixá-la depois pelo ícone de ficha na lista de matrículas."
+        );
+      }
     } catch (err: any) {
       alert("Erro ao matricular: " + err.message);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleBaixarFicha = async (id: string) => {
+    if (baixandoFichaId) {
+      return;
+    }
+
+    setBaixandoFichaId(id);
+
+    try {
+      await baixarFichaPorMatricula(id);
+    } catch (err: any) {
+      alert("Erro ao gerar a ficha de inscrição: " + err.message);
+    } finally {
+      setBaixandoFichaId(null);
     }
   };
 
@@ -424,6 +460,18 @@ export default function MatriculasClient({
                     </td>
 
                     <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => handleBaixarFicha(m.id)}
+                        disabled={!!baixandoFichaId}
+                        className="p-1.5 mr-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors disabled:opacity-50"
+                        title="Baixar ficha de inscrição (PDF)"
+                      >
+                        {baixandoFichaId === m.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <FileDown className="w-4 h-4" />
+                        )}
+                      </button>
                       <button
                         onClick={() =>
                           handleDelete(m.id)
