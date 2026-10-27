@@ -687,8 +687,8 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
         }
 
         if (formData.turma_id) {
-          novaMatricula = {
-            alunoId,
+                    novaMatricula = {
+            alunoId: novoAluno.id,
             turmaId: formData.turma_id,
           };
         }
