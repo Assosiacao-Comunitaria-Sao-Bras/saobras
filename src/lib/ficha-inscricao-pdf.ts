@@ -4,9 +4,14 @@ import type { jsPDF } from "jspdf";
  * ============================================================
  * FICHA DE INSCRIÇÃO - FUNDAÇÃO SÃO BRAZ
  *
- * Reproduz o modelo "GetReport.docx" em PDF (A4, uma página),
- * preenchido com os dados do aluno/matrícula para imprimir e
- * o responsável assinar.
+ * PDF A4 (uma página), preenchido com os dados do aluno/matrícula
+ * para imprimir e assinar.
+ *
+ * - Aluno com 18 anos ou mais: a seção "Dados do responsável" não
+ *   aparece (Bairro e Curso continuam na ficha) e a assinatura é
+ *   do próprio aluno.
+ * - Aluno menor de 18 anos (ou idade não informada): a seção do
+ *   responsável aparece normalmente.
  * ============================================================
  */
 
@@ -39,8 +44,8 @@ export type LogosFicha = {
 };
 
 const MESES = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
 ];
 
 const CONDICOES = [
@@ -96,6 +101,12 @@ export function semestreLetivo(valor: string | Date) {
   return `${ano}.${mes <= 6 ? 1 : 2}`;
 }
 
+/** Aluno com 18 anos ou mais (idade não informada conta como menor). */
+export function alunoMaiorDeIdade(dados: DadosFichaInscricao) {
+  const idade = dados.aluno.idade;
+  return typeof idade === "number" && idade >= 18;
+}
+
 function listarDias(dias?: string[] | null) {
   const lista = (dias ?? []).map((d) => d.trim().toUpperCase()).filter(Boolean);
   if (lista.length <= 1) return lista.join("");
@@ -130,26 +141,37 @@ export function nomeArquivoFicha(dados: DadosFichaInscricao) {
 // Subconjunto da API do jsPDF usado aqui (facilita testar sem o navegador).
 type Doc = Pick<
   jsPDF,
-  | "setFont" | "setFontSize" | "setTextColor" | "setDrawColor" | "setLineWidth"
+  | "setFont" | "setFontSize" | "setTextColor" | "setDrawColor" | "setFillColor"
+  | "setLineWidth" | "setLineDashPattern"
   | "text" | "line" | "rect" | "addImage" | "getTextWidth" | "splitTextToSize"
 >;
 
-const MARGEM_ESQ = 12;
-const MARGEM_DIR = 198; // 210 - 12
+type Cor = readonly [number, number, number];
+
+const MARGEM_ESQ = 14;
+const MARGEM_DIR = 196; // 210 - 14
+const LARGURA = MARGEM_DIR - MARGEM_ESQ; // 182
+const MEIO = 105;
+
+const AZUL: Cor = [23, 52, 94];
+const CINZA_TEXTO: Cor = [95, 95, 95];
+const CINZA_LINHA: Cor = [150, 150, 150];
+const CINZA_FUNDO: Cor = [230, 235, 242];
+const PRETO: Cor = [0, 0, 0];
 
 export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: LogosFicha = {}) {
   const semestre = semestreLetivo(dados.dataMatricula);
   const aluno = dados.aluno;
-  const meio = 105;
+  const maior = alunoMaiorDeIdade(dados);
 
-  const fonte = (estilo: "normal" | "bold", tamanho: number) => {
+  const fonte = (estilo: "normal" | "bold", tamanho: number, cor: Cor = PRETO) => {
     doc.setFont("helvetica", estilo);
     doc.setFontSize(tamanho);
-    doc.setTextColor(0, 0, 0);
+    doc.setTextColor(cor[0], cor[1], cor[2]);
   };
 
-  const linha = (x1: number, y: number, x2: number, espessura = 0.25) => {
-    doc.setDrawColor(0, 0, 0);
+  const linha = (x1: number, y: number, x2: number, espessura = 0.25, cor: Cor = PRETO) => {
+    doc.setDrawColor(cor[0], cor[1], cor[2]);
     doc.setLineWidth(espessura);
     doc.line(x1, y, x2, y);
   };
@@ -169,96 +191,184 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
     return saida === texto ? saida : `${saida.trimEnd()}…`;
   };
 
-  // "Rótulo: valor ______" com sublinhado até x + largura.
-  const campo = (rotulo: string, valor: string, x: number, y: number, largura: number) => {
-    fonte("normal", 8.5);
-    doc.text(rotulo, x, y);
-    const inicio = x + doc.getTextWidth(rotulo) + 1.5;
-    linha(inicio, y + 0.9, x + largura, 0.2);
+  // Faixa de título de seção (fundo cinza-azulado e texto azul-escuro).
+  const secao = (titulo: string, y: number) => {
+    doc.setFillColor(CINZA_FUNDO[0], CINZA_FUNDO[1], CINZA_FUNDO[2]);
+    doc.rect(MARGEM_ESQ, y, LARGURA, 5.4, "F");
+    doc.setFillColor(AZUL[0], AZUL[1], AZUL[2]);
+    doc.rect(MARGEM_ESQ, y, 1.2, 5.4, "F");
+    fonte("bold", 8.5, AZUL);
+    doc.text(titulo, MARGEM_ESQ + 3.5, y + 3.8);
+  };
+
+  // Campo: rótulo pequeno em cinza, valor em negrito e linha fina embaixo.
+  const celula = (rotulo: string, valor: string, x: number, y: number, largura: number) => {
+    fonte("normal", 6.6, CINZA_TEXTO);
+    doc.text(rotulo.toUpperCase(), x, y);
+    linha(x, y + 5.9, x + largura, 0.15, CINZA_LINHA);
     if (valor) {
-      const texto = ajustar(valor, x + largura - inicio - 1, "bold", 8.5);
-      doc.text(texto, inicio + 0.8, y);
+      const texto = ajustar(valor, largura - 1, "bold", 9);
+      doc.text(texto, x + 0.5, y + 4.7);
     }
   };
 
-  /* Cabeçalho */
+  // Distribui células lado a lado com espaçamento de 4 mm. `pesos` define a largura relativa.
+  const GAP = 4;
+  const linhaDeCelulas = (
+    y: number,
+    itens: { rotulo: string; valor: string; peso: number }[],
+  ) => {
+    const total = itens.reduce((soma, i) => soma + i.peso, 0);
+    const util = LARGURA - GAP * (itens.length - 1);
+    let x = MARGEM_ESQ;
+    for (const item of itens) {
+      const largura = (util * item.peso) / total;
+      celula(item.rotulo, item.valor, x, y, largura);
+      x += largura + GAP;
+    }
+  };
+
+  const PASSO = 10; // distância vertical entre linhas de campos
+
+  /* ---------- Cabeçalho ---------- */
   if (logos.prefeitura) doc.addImage(logos.prefeitura, "PNG", MARGEM_ESQ, 6, 40, 16.6, undefined, "FAST");
   if (logos.fundacao) doc.addImage(logos.fundacao, "PNG", MARGEM_DIR - 42, 6, 42, 17.4, undefined, "FAST");
   fonte("bold", 11);
-  doc.text("PREFEITURA MUNICIPAL DE FEIRA DE SANTANA", meio, 28, { align: "center" });
-  fonte("normal", 10);
-  doc.text("FUNDAÇÃO MUNICIPAL EGBERTO COSTA", meio, 33.5, { align: "center" });
-  fonte("normal", 9);
-  doc.text("SÃO BRAZ", meio, 38.5, { align: "center" });
-  linha(MARGEM_ESQ, 42, MARGEM_DIR, 0.4);
+  doc.text("PREFEITURA MUNICIPAL DE FEIRA DE SANTANA", MEIO, 27.5, { align: "center" });
+  fonte("normal", 9.5);
+  doc.text("FUNDAÇÃO MUNICIPAL EGBERTO COSTA", MEIO, 32.5, { align: "center" });
+  fonte("normal", 8.5, CINZA_TEXTO);
+  doc.text("POLO DE CIÊNCIA E TECNOLOGIA SÃO BRAZ", MEIO, 37, { align: "center" });
+  linha(MARGEM_ESQ, 40, MARGEM_DIR, 0.7, AZUL);
 
-  fonte("bold", 10.5);
-  doc.text(`FUNDAÇÃO SÃO BRAZ, FICHA DE INSCRIÇÃO 1 ${semestre}`, meio, 49, { align: "center" });
-  linha(MARGEM_ESQ, 52, MARGEM_DIR, 0.4);
+  fonte("bold", 13, AZUL);
+  doc.text("FICHA DE INSCRIÇÃO", MEIO, 47, { align: "center" });
+  fonte("normal", 8.5, CINZA_TEXTO);
+  doc.text(`Semestre letivo ${semestre}`, MEIO, 51.5, { align: "center" });
 
-  /* Aluno */
-  fonte("bold", 11);
-  doc.text("Aluno:", MARGEM_ESQ, 59);
-  campo("Nome:", aluno.nome_completo, MARGEM_ESQ, 65.5, 114);
-  campo("CPF:", formatarCPF(aluno.cpf), 128, 65.5, 44);
-  campo("Idade:", aluno.idade ? `${aluno.idade} anos` : "", 174, 65.5, 24);
-  campo("Telefone:", formatarTelefone(aluno.telefone), MARGEM_ESQ, 72, 88);
-  campo("Email:", aluno.email ?? "", 104, 72, 94);
-  campo("Unidade Educacional:", "", MARGEM_ESQ, 78.5, 186);
-  campo("Professor:", "", MARGEM_ESQ, 85, 186);
-  campo("Turma/Horário:", descricaoTurma(dados), MARGEM_ESQ, 91.5, 186);
+  /* ---------- Dados do aluno ---------- */
+  let y = 55;
+  secao("DADOS DO ALUNO", y);
+  y += 9;
+  linhaDeCelulas(y, [
+    { rotulo: "Nome completo", valor: aluno.nome_completo, peso: 4.2 },
+    { rotulo: "Idade", valor: aluno.idade ? `${aluno.idade} anos` : "", peso: 1 },
+  ]);
+  y += PASSO;
+  linhaDeCelulas(y, [
+    { rotulo: "CPF", valor: formatarCPF(aluno.cpf), peso: 1.4 },
+    { rotulo: "Telefone", valor: formatarTelefone(aluno.telefone), peso: 1.4 },
+    { rotulo: "E-mail", valor: aluno.email ?? "", peso: 2.6 },
+  ]);
+  y += PASSO;
+  linhaDeCelulas(y, [
+    { rotulo: "Bairro", valor: aluno.bairro ?? "", peso: 1.5 },
+    { rotulo: "Unidade educacional", valor: "", peso: 1.5 },
+    { rotulo: "Professor(a)", valor: "", peso: 1.5 },
+  ]);
 
-  /* Responsável */
-  fonte("bold", 11);
-  doc.text("Responsável:", MARGEM_ESQ, 100);
-  campo("Nome:", aluno.nome_responsavel ?? "", MARGEM_ESQ, 106.5, 124);
-  campo("CPF:", formatarCPF(aluno.cpf_responsavel), 138, 106.5, 60);
-  campo("Telefone:", formatarTelefone(aluno.telefone_secundario), MARGEM_ESQ, 113, 88);
-  campo("Email:", "", 104, 113, 94);
-  campo("Local de Trabalho:", "", MARGEM_ESQ, 119.5, 186);
-  campo("Bairro:", aluno.bairro ?? "", MARGEM_ESQ, 126, 100);
-  campo("Curso:", dados.curso, MARGEM_ESQ, 134, 186);
+  /* ---------- Curso e turma ---------- */
+  y += 9;
+  secao("CURSO E TURMA", y);
+  y += 9;
+  linhaDeCelulas(y, [{ rotulo: "Curso", valor: dados.curso, peso: 1 }]);
+  y += PASSO;
+  linhaDeCelulas(y, [{ rotulo: "Turma / horário", valor: descricaoTurma(dados), peso: 1 }]);
 
-  /* Condições */
-  let y = 144;
-  fonte("bold", 9);
-  doc.text("Condições a serem observadas para frequentar o Polo de ciência e tecnologia São Braz:", meio, y, { align: "center" });
-  y += 5;
-  fonte("normal", 7.4);
-  for (const item of CONDICOES) {
-    const linhas = doc.splitTextToSize(item, MARGEM_DIR - MARGEM_ESQ) as string[];
-    for (const l of linhas) {
-      doc.text(l, MARGEM_ESQ, y);
-      y += 3.3;
+  /* ---------- Responsável (somente menores de 18 anos) ---------- */
+  if (!maior) {
+    y += 9;
+    secao("DADOS DO RESPONSÁVEL", y);
+    y += 9;
+    linhaDeCelulas(y, [
+      { rotulo: "Nome do responsável", valor: aluno.nome_responsavel ?? "", peso: 3.2 },
+      { rotulo: "CPF", valor: formatarCPF(aluno.cpf_responsavel), peso: 1.4 },
+    ]);
+    y += PASSO;
+    linhaDeCelulas(y, [
+      { rotulo: "Telefone", valor: formatarTelefone(aluno.telefone_secundario), peso: 1.4 },
+      { rotulo: "E-mail", valor: "", peso: 1.8 },
+      { rotulo: "Local de trabalho", valor: "", peso: 1.8 },
+    ]);
+  }
+
+  /* ---------- Região inferior (posições fixas) ---------- */
+  const COMPROVANTE_TOPO = 262;
+  const COMPROVANTE_BASE = 288;
+  const ASSINATURA_Y = 252;
+  const DECLARACAO_Y = 237;
+  const LIMITE_CONDICOES = DECLARACAO_Y - 5;
+
+  /* ---------- Condições ---------- */
+  y += 9;
+  secao("CONDIÇÕES PARA FREQUENTAR O POLO DE CIÊNCIA E TECNOLOGIA SÃO BRAZ", y);
+  const inicioCondicoes = y + 9.2;
+
+  // Escolhe o maior tamanho de letra (até 8) em que todas as condições cabem.
+  const medirCondicoes = (tamanho: number) => {
+    fonte("normal", tamanho);
+    const espacoLinha = tamanho * 0.42;
+    const entreItens = 0.9;
+    const itens = CONDICOES.map((c) => doc.splitTextToSize(c, LARGURA) as string[]);
+    const altura = itens.reduce((soma, ls) => soma + ls.length * espacoLinha + entreItens, 0);
+    return { itens, espacoLinha, entreItens, altura };
+  };
+
+  let tamanho = 8;
+  let medidas = medirCondicoes(tamanho);
+  while (inicioCondicoes + medidas.altura > LIMITE_CONDICOES && tamanho > 6) {
+    tamanho -= 0.2;
+    medidas = medirCondicoes(tamanho);
+  }
+
+  fonte("normal", tamanho);
+  let yc = inicioCondicoes;
+  for (const ls of medidas.itens) {
+    for (const l of ls) {
+      doc.text(l, MARGEM_ESQ, yc);
+      yc += medidas.espacoLinha;
     }
+    yc += medidas.entreItens;
   }
 
-  /* Declaração, data e assinatura */
-  y += 3;
+  /* ---------- Declaração, data e assinatura ---------- */
   fonte("normal", 8.5);
-  for (const l of doc.splitTextToSize(DECLARACAO, MARGEM_DIR - MARGEM_ESQ) as string[]) {
-    doc.text(l, MARGEM_ESQ, y);
-    y += 4;
+  let yd = DECLARACAO_Y;
+  for (const l of doc.splitTextToSize(DECLARACAO, LARGURA) as string[]) {
+    doc.text(l, MARGEM_ESQ, yd);
+    yd += 4;
   }
-  const { dia, mes, ano } = partesDataBahia(dados.dataMatricula);
-  y += 4;
-  fonte("normal", 9);
-  doc.text(`Feira de Santana, ${dia} de ${MESES[mes - 1]} de ${ano}`, meio, y, { align: "center" });
-  y += 13;
-  linha(60, y, 150, 0.3);
-  y += 4;
-  fonte("normal", 9);
-  doc.text("Responsável", meio, y, { align: "center" });
 
-  /* Comprovante */
-  const topo = 259;
-  const base = 285;
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.3);
-  doc.rect(MARGEM_ESQ, topo, MARGEM_DIR - MARGEM_ESQ, base - topo);
-  fonte("bold", 9);
-  doc.text(`COMPROVANTE DE INSCRIÇÃO FUNDAÇÃO SÃO BRAZ:  ${semestre}`, meio, topo + 5.5, { align: "center" });
-  linha(MARGEM_ESQ, topo + 8, MARGEM_DIR, 0.3);
+  const { dia, mes, ano } = partesDataBahia(dados.dataMatricula);
+  fonte("normal", 9);
+  doc.text(`Feira de Santana, ${dia} de ${MESES[mes - 1]} de ${ano}`, MARGEM_ESQ, ASSINATURA_Y);
+  linha(104, ASSINATURA_Y, MARGEM_DIR, 0.3);
+  fonte("normal", 8, CINZA_TEXTO);
+  doc.text(
+    maior ? "Assinatura do(a) aluno(a)" : "Assinatura do responsável",
+    (104 + MARGEM_DIR) / 2,
+    ASSINATURA_Y + 4,
+    { align: "center" },
+  );
+
+  /* ---------- Linha de corte + comprovante ---------- */
+  doc.setDrawColor(CINZA_LINHA[0], CINZA_LINHA[1], CINZA_LINHA[2]);
+  doc.setLineWidth(0.2);
+  doc.setLineDashPattern([1.6, 1.2], 0);
+  doc.line(MARGEM_ESQ, COMPROVANTE_TOPO - 2.5, MARGEM_DIR, COMPROVANTE_TOPO - 2.5);
+  doc.setLineDashPattern([], 0);
+
+  const topo = COMPROVANTE_TOPO;
+  const base = COMPROVANTE_BASE;
+
+  doc.setFillColor(CINZA_FUNDO[0], CINZA_FUNDO[1], CINZA_FUNDO[2]);
+  doc.rect(MARGEM_ESQ, topo, LARGURA, 8, "F");
+  doc.setDrawColor(AZUL[0], AZUL[1], AZUL[2]);
+  doc.setLineWidth(0.4);
+  doc.rect(MARGEM_ESQ, topo, LARGURA, base - topo);
+  fonte("bold", 9, AZUL);
+  doc.text(`COMPROVANTE DE INSCRIÇÃO - FUNDAÇÃO SÃO BRAZ  ${semestre}`, MEIO, topo + 5.4, { align: "center" });
+  linha(MARGEM_ESQ, topo + 8, MARGEM_DIR, 0.3, AZUL);
 
   const oficina = [dados.curso, dados.turma?.nome].filter(Boolean).join(" - ");
   const { dia: d, mes: m, ano: a } = partesDataBahia(dados.dataMatricula);
@@ -270,20 +380,25 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
     const inicio = x + doc.getTextWidth(rotulo) + 1.5;
     if (valor) doc.text(ajustar(valor, largura - (inicio - x), "normal", 8.5), inicio, yy);
   };
-  rotuloValor("NOME:", aluno.nome_completo, MARGEM_ESQ + 1.5, topo + 14, 90);
-  rotuloValor("OFICINA:", oficina, 108, topo + 14, 62);
-  rotuloValor("FUNCIONARIO:", dados.operador ?? "", MARGEM_ESQ + 1.5, topo + 20, 90);
-  rotuloValor("DATA:", dataCurta, 108, topo + 20, 62);
+  rotuloValor("NOME:", aluno.nome_completo, MARGEM_ESQ + 2, topo + 14.5, 92);
+  rotuloValor("OFICINA:", oficina, 110, topo + 14.5, 58);
+  rotuloValor("FUNCIONÁRIO:", dados.operador ?? "", MARGEM_ESQ + 2, topo + 20.5, 92);
+  rotuloValor("DATA:", dataCurta, 110, topo + 20.5, 58);
   if (logos.fundacao) doc.addImage(logos.fundacao, "PNG", MARGEM_DIR - 27, topo + 10.5, 25, 10.4, undefined, "FAST");
 
-  linha(MARGEM_ESQ, base - 4.5, MARGEM_DIR, 0.3);
-  fonte("normal", 7);
-  doc.text("(É PROIBIDO PERMANÊNCIA DE ALUNOS MENORES DE 10 ANOS SEM A PRESENÇA DOS PAIS OU RESPONSÁVEIS)", meio, base - 1.6, { align: "center" });
+  linha(MARGEM_ESQ, base - 4.6, MARGEM_DIR, 0.2, CINZA_LINHA);
+  fonte("normal", 6.8, CINZA_TEXTO);
+  doc.text(
+    "(É PROIBIDA A PERMANÊNCIA DE ALUNOS MENORES DE 10 ANOS SEM A PRESENÇA DOS PAIS OU RESPONSÁVEIS)",
+    MEIO,
+    base - 1.7,
+    { align: "center" },
+  );
 
-  /* Rodapé */
-  fonte("normal", 8);
-  doc.text("Sistema:Matrícula", MARGEM_ESQ, 290);
-  doc.text(`Usuário: ${dados.operador ?? "________________________"}`, 108, 290);
+  /* ---------- Rodapé ---------- */
+  fonte("normal", 7.5, CINZA_TEXTO);
+  doc.text("Sistema: Matrícula", MARGEM_ESQ, 293);
+  doc.text(`Usuário: ${dados.operador ?? "________________________"}`, MARGEM_DIR, 293, { align: "right" });
 }
 
 /** Cria o PDF (carrega o jsPDF só quando necessário). */
