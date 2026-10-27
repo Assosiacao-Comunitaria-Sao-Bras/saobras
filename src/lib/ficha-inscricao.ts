@@ -15,11 +15,15 @@ import {
  * ============================================================
  */
 
-const SELECT_MATRICULA =
+const SELECT_BASE =
   "id, data_matricula, " +
   "alunos(nome_completo, cpf, idade, telefone, telefone_secundario, email, bairro, nome_responsavel, cpf_responsavel), " +
-  "cursos(titulo), " +
-  "turmas(nome, turno, horario, dias_semana)";
+  "cursos(titulo), ";
+
+const SELECT_MATRICULA = SELECT_BASE + "turmas(nome, turno, horario, dias_semana, professor)";
+
+// Usado só se a coluna "professor" ainda não existir na tabela turmas.
+const SELECT_MATRICULA_SEM_PROFESSOR = SELECT_BASE + "turmas(nome, turno, horario, dias_semana)";
 
 // O Supabase pode devolver relacionamentos como objeto ou lista.
 function um<T>(valor: T | T[] | null | undefined): T | null {
@@ -96,11 +100,11 @@ async function gerarEBaixar(linha: LinhaMatricula) {
 
 /** Baixa a ficha de uma matrícula específica (botão no painel do aluno / lista de matrículas). */
 export async function baixarFichaPorMatricula(matriculaId: string) {
-  const { data, error } = await supabase
-    .from("matriculas")
-    .select(SELECT_MATRICULA)
-    .eq("id", matriculaId)
-    .maybeSingle();
+  const buscar = (campos: string) =>
+    supabase.from("matriculas").select(campos).eq("id", matriculaId).maybeSingle();
+
+  let { data, error } = await buscar(SELECT_MATRICULA);
+  if (error) ({ data, error } = await buscar(SELECT_MATRICULA_SEM_PROFESSOR));
 
   if (error) throw new Error("Não foi possível carregar a matrícula: " + error.message);
   if (!data) throw new Error("Matrícula não encontrada.");
@@ -112,14 +116,18 @@ export async function baixarFichaPorMatricula(matriculaId: string) {
  * Usada logo depois de criar a matrícula, quando ainda não temos o id dela.
  */
 export async function baixarFichaPorAlunoTurma(alunoId: string, turmaId: string) {
-  const { data, error } = await supabase
-    .from("matriculas")
-    .select(SELECT_MATRICULA)
-    .eq("aluno_id", alunoId)
-    .eq("turma_id", turmaId)
-    .order("data_matricula", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const buscar = (campos: string) =>
+    supabase
+      .from("matriculas")
+      .select(campos)
+      .eq("aluno_id", alunoId)
+      .eq("turma_id", turmaId)
+      .order("data_matricula", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+  let { data, error } = await buscar(SELECT_MATRICULA);
+  if (error) ({ data, error } = await buscar(SELECT_MATRICULA_SEM_PROFESSOR));
 
   if (error) throw new Error("Não foi possível carregar a matrícula: " + error.message);
   if (!data) throw new Error("Matrícula não encontrada.");
