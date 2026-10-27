@@ -12,8 +12,10 @@ import {
   Save,
   AlertCircle,
   BookOpen,
+  FileDown,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { baixarFichaAposMatricula, baixarFichaPorMatricula } from "@/lib/ficha-inscricao";
 import { useRouter } from "next/navigation";
 import { AlunosOverview, StatusAlunoBadge } from "./AlunosOverview";
 import { calcularSituacaoAluno, indexarFrequencias, type RegistroFrequenciaAluno } from "@/lib/alunos-situacao";
@@ -77,6 +79,8 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
   const [erroMatriculas, setErroMatriculas] = useState("");
   const [erroDesistencia, setErroDesistencia] = useState("");
   const [confirmarDesistencia, setConfirmarDesistencia] = useState<Matricula | null>(null);
+  const [baixandoFicha, setBaixandoFicha] = useState<string | null>(null);
+  const [erroFicha, setErroFicha] = useState("");
 
   // Estados para controlar os fluxos do modal
   const [isEditing, setIsEditing] = useState(false);
@@ -436,6 +440,25 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
 
   /*
    * ============================================================
+   * FICHA DE INSCRIÇÃO (PDF para imprimir e assinar)
+   * ============================================================
+   */
+  const baixarFicha = async (matricula: Matricula) => {
+    if (baixandoFicha) return;
+    setBaixandoFicha(matricula.id);
+    setErroFicha("");
+    try {
+      await baixarFichaPorMatricula(matricula.id);
+    } catch (erro) {
+      console.error("Erro ao gerar a ficha de inscrição:", erro);
+      setErroFicha(erro instanceof Error ? erro.message : "Não foi possível gerar a ficha de inscrição.");
+    } finally {
+      setBaixandoFicha(null);
+    }
+  };
+
+  /*
+   * ============================================================
    * EXCLUSÃO
    * ============================================================
    */
@@ -577,6 +600,12 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
       let alunoId = selectedAluno?.id;
 
       /*
+       * Guarda a matrícula recém-criada para gerar a ficha de
+       * inscrição depois que tudo for salvo.
+       */
+      let novaMatricula: { alunoId: string; turmaId: string } | null = null;
+
+      /*
        * ========================================================
        * NOVO ALUNO
        * ========================================================
@@ -655,6 +684,13 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
             "Aluno criado, mas a matrícula não pôde ser criada: " +
               matriculaError.message
           );
+        }
+
+        if (formData.turma_id) {
+          novaMatricula = {
+            alunoId,
+            turmaId: formData.turma_id,
+          };
         }
       }
 
@@ -747,6 +783,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
               {
                 aluno_id: selectedAluno.id,
                 curso_id: formData.curso_id,
+                turma_id: formData.turma_id || null,
                 operador_id: operadorId,
                 data_matricula:
                   new Date().toISOString(),
@@ -759,6 +796,13 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                 matriculaError.message
             );
           }
+
+          if (formData.turma_id) {
+            novaMatricula = {
+              alunoId: selectedAluno.id,
+              turmaId: formData.turma_id,
+            };
+          }
         }
       }
 
@@ -768,6 +812,26 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
       closePanel();
 
       router.refresh();
+
+      /*
+       * Matrícula criada: baixa a ficha de inscrição para imprimir.
+       * Se a geração falhar, a matrícula continua salva e a ficha
+       * pode ser baixada depois pelo painel do aluno.
+       */
+      if (novaMatricula) {
+        const erroFichaGerada = await baixarFichaAposMatricula(
+          novaMatricula.alunoId,
+          novaMatricula.turmaId
+        );
+
+        if (erroFichaGerada) {
+          alert(
+            "A matrícula foi salva, mas não foi possível gerar a ficha de inscrição: " +
+              erroFichaGerada +
+              "\n\nVocê pode baixá-la depois, abrindo o aluno e clicando em \"Baixar ficha de inscrição\"."
+          );
+        }
+      }
     } catch (error) {
       const message =
         error instanceof Error
@@ -886,6 +950,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
           setIsLoadingMatriculas(true);
           setErroDesistencia("");
           setErroMatriculas("");
+          setErroFicha("");
         }}
         onCreate={startCreating}
       />
@@ -1138,6 +1203,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
 
                     {erroDesistencia && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erroDesistencia}</p>}
                     {erroMatriculas && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erroMatriculas}</p>}
+                    {erroFicha && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erroFicha}</p>}
 
                     {isLoadingMatriculas ? (
                       <div className="text-sm text-slate-500 animate-pulse bg-slate-50 p-4 rounded-md border border-slate-100 text-center">
@@ -1184,6 +1250,18 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                                 )}
                                 <p className="mt-2 text-xs text-slate-500">Turma: {(Array.isArray(mat.turmas) ? mat.turmas[0]?.nome : mat.turmas?.nome) || "Não informada"}</p>
                                 {mat.desistiu_em && <p className="mt-2 text-xs font-medium text-red-700">Desistência registrada em {new Date(mat.desistiu_em).toLocaleDateString("pt-BR", { timeZone: "America/Bahia" })}</p>}
+                              </div>
+
+                              <div className="mt-4 border-t border-slate-100 pt-3">
+                                <button
+                                  type="button"
+                                  disabled={!!baixandoFicha}
+                                  onClick={() => baixarFicha(mat)}
+                                  className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50"
+                                >
+                                  <FileDown className="h-4 w-4" />
+                                  {baixandoFicha === mat.id ? "Gerando ficha..." : "Baixar ficha de inscrição"}
+                                </button>
                               </div>
 
                               {Object.prototype.hasOwnProperty.call(mat, "desistiu_em") ? (
@@ -1809,4 +1887,3 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
     </>
   );
 }
-
