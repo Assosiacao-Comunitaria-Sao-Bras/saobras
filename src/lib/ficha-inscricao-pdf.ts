@@ -43,6 +43,9 @@ export type LogosFicha = {
   fundacao?: string | null; // data URL PNG
 };
 
+const POLO_TELEFONE = "75983579622";
+const POLO_ENDERECO = "Rua Campinorte, nº 70, Mangabeira – Feira de Santana/BA";
+
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
   "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
@@ -95,12 +98,6 @@ export function partesDataBahia(valor: string | Date) {
   return { dia: pega("day"), mes: pega("month"), ano: pega("year") };
 }
 
-/** Semestre letivo: janeiro a junho = ".1", julho a dezembro = ".2". */
-export function semestreLetivo(valor: string | Date) {
-  const { mes, ano } = partesDataBahia(valor);
-  return `${ano}.${mes <= 6 ? 1 : 2}`;
-}
-
 /** Aluno com 18 anos ou mais (idade não informada conta como menor). */
 export function alunoMaiorDeIdade(dados: DadosFichaInscricao) {
   const idade = dados.aluno.idade;
@@ -133,7 +130,7 @@ export function nomeArquivoFicha(dados: DadosFichaInscricao) {
     .replace(/[^a-zA-Z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
-  return `ficha-inscricao-${nome || "aluno"}-${semestreLetivo(dados.dataMatricula)}.pdf`;
+  return `ficha-inscricao-${nome || "aluno"}.pdf`;
 }
 
 /* ---------- desenho ---------- */
@@ -160,7 +157,6 @@ const CINZA_FUNDO: Cor = [230, 235, 242];
 const PRETO: Cor = [0, 0, 0];
 
 export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: LogosFicha = {}) {
-  const semestre = semestreLetivo(dados.dataMatricula);
   const aluno = dados.aluno;
   const maior = alunoMaiorDeIdade(dados);
 
@@ -212,7 +208,7 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
     }
   };
 
-  // Distribui células lado a lado com espaçamento de 4 mm. `pesos` define a largura relativa.
+  // Distribui células lado a lado com espaçamento de 4 mm. `peso` define a largura relativa.
   const GAP = 4;
   const linhaDeCelulas = (
     y: number,
@@ -239,12 +235,17 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
   doc.text("FUNDAÇÃO MUNICIPAL EGBERTO COSTA", MEIO, 32.5, { align: "center" });
   fonte("normal", 8.5, CINZA_TEXTO);
   doc.text("POLO DE CIÊNCIA E TECNOLOGIA SÃO BRAZ", MEIO, 37, { align: "center" });
-  linha(MARGEM_ESQ, 40, MARGEM_DIR, 0.7, AZUL);
+  fonte("normal", 7.5, CINZA_TEXTO);
+  doc.text(
+    `${POLO_ENDERECO}  |  Tel.: ${formatarTelefone(POLO_TELEFONE)}`,
+    MEIO,
+    41.2,
+    { align: "center" },
+  );
+  linha(MARGEM_ESQ, 43.8, MARGEM_DIR, 0.7, AZUL);
 
   fonte("bold", 13, AZUL);
-  doc.text("FICHA DE INSCRIÇÃO", MEIO, 47, { align: "center" });
-  fonte("normal", 8.5, CINZA_TEXTO);
-  doc.text(`Semestre letivo ${semestre}`, MEIO, 51.5, { align: "center" });
+  doc.text("FICHA DE INSCRIÇÃO", MEIO, 51, { align: "center" });
 
   /* ---------- Dados do aluno ---------- */
   let y = 55;
@@ -262,9 +263,8 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
   ]);
   y += PASSO;
   linhaDeCelulas(y, [
-    { rotulo: "Bairro", valor: aluno.bairro ?? "", peso: 1.5 },
-    { rotulo: "Unidade educacional", valor: "", peso: 1.5 },
-    { rotulo: "Professor(a)", valor: "", peso: 1.5 },
+    { rotulo: "Bairro", valor: aluno.bairro ?? "", peso: 1 },
+    { rotulo: "Professor(a)", valor: "", peso: 1 },
   ]);
 
   /* ---------- Curso e turma ---------- */
@@ -286,9 +286,8 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
     ]);
     y += PASSO;
     linhaDeCelulas(y, [
-      { rotulo: "Telefone", valor: formatarTelefone(aluno.telefone_secundario), peso: 1.4 },
-      { rotulo: "E-mail", valor: "", peso: 1.8 },
-      { rotulo: "Local de trabalho", valor: "", peso: 1.8 },
+      { rotulo: "Telefone", valor: formatarTelefone(aluno.telefone_secundario), peso: 1 },
+      { rotulo: "E-mail", valor: "", peso: 1.4 },
     ]);
   }
 
@@ -367,7 +366,7 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
   doc.setLineWidth(0.4);
   doc.rect(MARGEM_ESQ, topo, LARGURA, base - topo);
   fonte("bold", 9, AZUL);
-  doc.text(`COMPROVANTE DE INSCRIÇÃO - FUNDAÇÃO SÃO BRAZ  ${semestre}`, MEIO, topo + 5.4, { align: "center" });
+  doc.text(`COMPROVANTE DE INSCRIÇÃO - FUNDAÇÃO SÃO BRAZ`, MEIO, topo + 5.4, { align: "center" });
   linha(MARGEM_ESQ, topo + 8, MARGEM_DIR, 0.3, AZUL);
 
   const oficina = [dados.curso, dados.turma?.nome].filter(Boolean).join(" - ");
