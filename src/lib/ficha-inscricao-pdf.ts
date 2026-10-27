@@ -33,6 +33,7 @@ export type DadosFichaInscricao = {
     turno?: string | null;
     horario?: string | null;
     dias_semana?: string[] | null;
+    professor?: string | null;
   } | null;
   dataMatricula: string | Date;
   operador?: string | null;
@@ -208,7 +209,7 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
     }
   };
 
-  // Distribui células lado a lado com espaçamento de 4 mm. `peso` define a largura relativa.
+  // Distribui células lado a lado com espaçamento de 4 mm. `pesos` define a largura relativa.
   const GAP = 4;
   const linhaDeCelulas = (
     y: number,
@@ -262,7 +263,7 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
   y += PASSO;
   linhaDeCelulas(y, [
     { rotulo: "Bairro", valor: aluno.bairro ?? "", peso: 1 },
-    { rotulo: "Professor(a)", valor: "", peso: 1 },
+    { rotulo: "Professor(a)", valor: (dados.turma?.professor ?? "").trim(), peso: 1 },
   ]);
 
   /* ---------- Curso e turma ---------- */
