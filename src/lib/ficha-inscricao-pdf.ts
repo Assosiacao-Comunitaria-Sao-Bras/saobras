@@ -53,21 +53,21 @@ const MESES = [
 ];
 
 const CONDICOES = [
-  "1º - Danos ou prejuízos causados pelos alunos ou acompanhantes ao Polo de ciência e tecnologia São Brás, são de responsabilidade dos responsáveis;",
+  "1º - Danos ou prejuízos causados pelos alunos ou acompanhantes ao Polo de Ciência e Tecnologia São Brás, são de responsabilidade dos responsáveis;",
   "2º - Os responsáveis serão convidados a participarem das reuniões para decidir sobre assuntos de interesse do aluno(a). Caso não compareçam, deverão acatar as decisões tomadas pelos presentes;",
   "3º - Os(as) alunos(as) com até 10 anos deverão vir acompanhados(as) dos responsáveis, que se responsabilizarão pelos seus comportamentos e eventuais danos, acidentes ou mau uso das instalações;",
   "4º - Todos deverão usar trajes apropriados ao ambiente segundo orientações dos professores e comportarem-se de forma apropriada ao ambiente onde frequentam pessoas de todas as idades e credos;",
-  "5º - Não é permitido fumar ou utilizar qualquer tipo de substâncias ilícitas dentro do Polo de ciência e tecnologia São Brás;",
-  "6º - Recomendamos aos frequentadores que não tragam pertences ou valores para o Polo de ciência e tecnologia São Brás. Em nenhuma hipótese a direção do Polo de ciência e tecnologia São Brás se responsabiliza por eventuais perdas ou desaparecimentos dos mesmos;",
-  "7º - Não é permitida a comercialização de qualquer produto nas instalações do Polo de ciência e tecnologia São Brás. Eventuais exceções só com o conhecimento e expressa autorização da direção;",
-  "8º - A imagem dos(as) alunos(as) ou responsáveis poderão aparecer em material de divulgação do Polo de ciência e tecnologia São Brás como fotos, imprensa, facebook, etc. Se os responsáveis não estiverem de acordo, devem comunicar expressamente neste ato de inscrição;",
-  "9º - Os avisos serão afixados no Foyer do Polo de ciência e tecnologia São Brás. Eventualmente poderão ser fornecidos via WhatsApp;",
+  "5º - Não é permitido fumar ou utilizar qualquer tipo de substâncias ilícitas dentro do Polo de Ciência e Tecnologia São Brás;",
+  "6º - Recomendamos aos frequentadores que não tragam pertences ou valores para o Polo de Ciência e Tecnologia São Brás. Em nenhuma hipótese a direção do Polo de Ciência e Tecnologia São Brás se responsabiliza por eventuais perdas ou desaparecimentos dos mesmos;",
+  "7º - Não é permitida a comercialização de qualquer produto nas instalações do Polo de Ciência e Tecnologia São Brás. Eventuais exceções só com o conhecimento e expressa autorização da direção;",
+  "8º - A imagem dos(as) alunos(as) ou responsáveis poderão aparecer em material de divulgação do Polo de Ciência e Tecnologia São Brás como fotos, imprensa, facebook, etc. Se os responsáveis não estiverem de acordo, devem comunicar expressamente neste ato de inscrição;",
+  "9º - Os avisos serão afixados no Foyer do Polo de Ciência e Tecnologia São Brás. Eventualmente poderão ser fornecidos via WhatsApp;",
   "10º - A turma só será mantida caso haja no número mínimo de cinco alunos(as) frequentando;",
-  "11º - O Polo de ciência e tecnologia São Brás fornecerão água potável aos frequentadores, que deverão trazer seu próprio copo;",
+  "11º - O Polo de Ciência e Tecnologia São Brás fornecerão água potável aos frequentadores, que deverão trazer seu próprio copo;",
 ];
 
 const DECLARACAO =
-  "Declaro serem verdadeiras as informações fornecidas sobre a saúde e que o aluno(a) acima identificado(a) encontra-se em perfeitas condições para frequentar as atividades do Polo de ciência e tecnologia São Brás.";
+  "Declaro serem verdadeiras as informações fornecidas sobre a saúde e que o aluno(a) acima identificado(a) encontra-se em perfeitas condições para frequentar as atividades do Polo de Ciência e Tecnologia São Brás.";
 
 /* ---------- utilitários ---------- */
 
@@ -366,17 +366,35 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
   const { dia: d, mes: m, ano: a } = partesDataBahia(dados.dataMatricula);
   const dataCurta = `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${a}`;
 
-  const rotuloValor = (rotulo: string, valor: string, x: number, yy: number, largura: number) => {
+  // Duas colunas alinhadas: rótulos e valores começam no mesmo x em cada coluna,
+  // e as duas colunas compartilham as mesmas linhas de base.
+  const COL_ESQ_X = MARGEM_ESQ + 3;
+  const COL_ESQ_LARGURA = 88;
+  const COL_DIR_X = MEIO + 6;
+  const COL_DIR_LARGURA = MARGEM_DIR - 3 - COL_DIR_X;
+  const LINHA_1 = topo + 14.5;
+  const LINHA_2 = topo + 21.5;
+
+  fonte("bold", 8.5);
+  const rotEsq = doc.getTextWidth("FUNCIONÁRIO:") + 2;
+  const rotDir = doc.getTextWidth("CURSO:") + 2;
+
+  const rotuloValor = (
+    rotulo: string,
+    valor: string,
+    x: number,
+    yy: number,
+    largura: number,
+    larguraRotulo: number,
+  ) => {
     fonte("bold", 8.5);
     doc.text(rotulo, x, yy);
-    const inicio = x + doc.getTextWidth(rotulo) + 1.5;
-    if (valor) doc.text(ajustar(valor, largura - (inicio - x), "normal", 8.5), inicio, yy);
+    if (valor) doc.text(ajustar(valor, largura - larguraRotulo, "normal", 8.5), x + larguraRotulo, yy);
   };
-  // Nome à esquerda; curso à direita, logo acima da data.
-  rotuloValor("NOME:", aluno.nome_completo, MARGEM_ESQ + 2, topo + 13.5, 100);
-  rotuloValor("CURSO:", curso, 110, topo + 18.5, 82);
-  rotuloValor("FUNCIONÁRIO:", dados.operador ?? "", MARGEM_ESQ + 2, topo + 23.5, 92);
-  rotuloValor("DATA:", dataCurta, 110, topo + 23.5, 58);
+  rotuloValor("NOME:", aluno.nome_completo, COL_ESQ_X, LINHA_1, COL_ESQ_LARGURA, rotEsq);
+  rotuloValor("CURSO:", curso, COL_DIR_X, LINHA_1, COL_DIR_LARGURA, rotDir);
+  rotuloValor("FUNCIONÁRIO:", dados.operador ?? "", COL_ESQ_X, LINHA_2, COL_ESQ_LARGURA, rotEsq);
+  rotuloValor("DATA:", dataCurta, COL_DIR_X, LINHA_2, COL_DIR_LARGURA, rotDir);
 
   linha(MARGEM_ESQ, base - 3.9, MARGEM_DIR, 0.2, CINZA_LINHA);
   fonte("normal", 6.8, CINZA_TEXTO);
