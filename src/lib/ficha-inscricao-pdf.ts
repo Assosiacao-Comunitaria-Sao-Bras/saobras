@@ -139,7 +139,7 @@ export function nomeArquivoFicha(dados: DadosFichaInscricao) {
 type Doc = Pick<
   jsPDF,
   | "setFont" | "setFontSize" | "setTextColor" | "setDrawColor" | "setFillColor"
-  | "setLineWidth" | "setLineDashPattern"
+  | "setLineWidth"
   | "text" | "line" | "rect" | "addImage" | "getTextWidth" | "splitTextToSize"
 >;
 
@@ -230,25 +230,23 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
   if (logos.prefeitura) doc.addImage(logos.prefeitura, "PNG", MARGEM_ESQ, 6, 40, 16.6, undefined, "FAST");
   if (logos.fundacao) doc.addImage(logos.fundacao, "PNG", MARGEM_DIR - 42, 6, 42, 17.4, undefined, "FAST");
   fonte("bold", 11);
-  doc.text("PREFEITURA MUNICIPAL DE FEIRA DE SANTANA", MEIO, 27.5, { align: "center" });
-  fonte("normal", 9.5);
-  doc.text("FUNDAÇÃO MUNICIPAL EGBERTO COSTA", MEIO, 32.5, { align: "center" });
-  fonte("normal", 8.5, CINZA_TEXTO);
-  doc.text("POLO DE CIÊNCIA E TECNOLOGIA SÃO BRAZ", MEIO, 37, { align: "center" });
+  doc.text("PREFEITURA MUNICIPAL DE FEIRA DE SANTANA", MEIO, 28, { align: "center" });
+  fonte("normal", 9, CINZA_TEXTO);
+  doc.text("POLO DE CIÊNCIA E TECNOLOGIA SÃO BRAZ", MEIO, 33.2, { align: "center" });
   fonte("normal", 7.5, CINZA_TEXTO);
   doc.text(
     `${POLO_ENDERECO}  |  Tel.: ${formatarTelefone(POLO_TELEFONE)}`,
     MEIO,
-    41.2,
+    37.8,
     { align: "center" },
   );
-  linha(MARGEM_ESQ, 43.8, MARGEM_DIR, 0.7, AZUL);
+  linha(MARGEM_ESQ, 41, MARGEM_DIR, 0.7, AZUL);
 
   fonte("bold", 13, AZUL);
-  doc.text("FICHA DE INSCRIÇÃO", MEIO, 51, { align: "center" });
+  doc.text("FICHA DE INSCRIÇÃO", MEIO, 48.5, { align: "center" });
 
   /* ---------- Dados do aluno ---------- */
-  let y = 55;
+  let y = 52.5;
   secao("DADOS DO ALUNO", y);
   y += 9;
   linhaDeCelulas(y, [
@@ -350,13 +348,7 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
     { align: "center" },
   );
 
-  /* ---------- Linha de corte + comprovante ---------- */
-  doc.setDrawColor(CINZA_LINHA[0], CINZA_LINHA[1], CINZA_LINHA[2]);
-  doc.setLineWidth(0.2);
-  doc.setLineDashPattern([1.6, 1.2], 0);
-  doc.line(MARGEM_ESQ, COMPROVANTE_TOPO - 2.5, MARGEM_DIR, COMPROVANTE_TOPO - 2.5);
-  doc.setLineDashPattern([], 0);
-
+  /* ---------- Comprovante ---------- */
   const topo = COMPROVANTE_TOPO;
   const base = COMPROVANTE_BASE;
 
