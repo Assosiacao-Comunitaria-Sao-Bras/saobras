@@ -20,6 +20,7 @@ export type Turma = {
   dias_semana: string[] | null;
   turno: string | null;
   horario: string | null;
+  professor?: string | null;
   data_hora_inicio: string | null;
   data_hora_fim: string | null;
   vagas?: number;
@@ -31,6 +32,12 @@ export type Turma = {
 
 const DIAS_SEMANA = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"];
 const LIMITE_VAGAS = 10;
+const PROFESSORES = [
+  "Elias Brito Lima Machado",
+  "Beatriz Santos Silva Pinho",
+  "Emerson Lucas Sacramento Lima",
+  "Gustavo Bezerra Nonato",
+];
 const TURNOS = ["Manhã", "Tarde"];
 const HORARIOS = [
   { turno: "Manhã", label: "08:30–09:30", inicio: "08:30", fim: "09:30" },
@@ -773,8 +780,8 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
 
   const handleSaveTurma = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingTurma?.nome || !editingTurma?.curso_id || !editingTurma?.turno || !editingTurma?.horario) {
-      alert("Preencha nome, curso, turno e horário!");
+    if (!editingTurma?.nome || !editingTurma?.curso_id || !editingTurma?.professor || !editingTurma?.turno || !editingTurma?.horario) {
+      alert("Preencha nome, curso, professor, turno e horário!");
       return;
     }
     setIsSaving(true);
@@ -787,6 +794,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
       turno: editingTurma.turno,
       dias_semana: editingTurma.dias_semana || [],
       horario: editingTurma.horario,
+      professor: editingTurma.professor,
       data_hora_inicio: inicio,
       data_hora_fim: fim,
       vagas: LIMITE_VAGAS
@@ -880,6 +888,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
         curso_id: turma.curso_id,
         turno: turma.turno || "Manhã",
         horario: turma.horario || "08:30–09:30",
+        professor: turma.professor || "",
         dias_semana: turma.dias_semana || [],
         vagas: LIMITE_VAGAS,
       });
@@ -940,7 +949,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
               <Plus className="w-4 h-4" /> Novo Curso
             </button>
           ) : (
-            <button onClick={() => { setEditingTurma({ nome: "", curso_id: "", turno: "Manhã", horario: "08:30–09:30", dias_semana: [], vagas: LIMITE_VAGAS }); setIsTurmaModalOpen(true); }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2">
+            <button onClick={() => { setEditingTurma({ nome: "", curso_id: "", professor: "", turno: "Manhã", horario: "08:30–09:30", dias_semana: [], vagas: LIMITE_VAGAS }); setIsTurmaModalOpen(true); }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2">
               <Plus className="w-4 h-4" /> Nova Turma
             </button>
           )}
@@ -1060,6 +1069,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                                 </button>
                                 <div className="font-bold text-slate-800 text-sm leading-tight mb-1 pr-5 relative z-10">{turma.nome}</div>
                                 <div className={`text-xs font-medium line-clamp-1 mb-2 relative z-10 ${turmaColor.gridTextSub}`}>{(Array.isArray(turma.cursos) ? turma.cursos[0]?.titulo : turma.cursos?.titulo) || "Curso Indefinido"}</div>
+                                {turma.professor && <div className={`text-[11px] line-clamp-1 mb-2 relative z-10 ${turmaColor.gridTextSub}`}>Prof. {turma.professor}</div>}
                                 <div className={`mt-auto inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border relative z-10 ${turmaColor.badge}`}>
                                   {getVagasDisponiveis(turma)} vagas · {vagasOcupadas[turma.id] || 0} alunos
                                 </div>
@@ -1324,6 +1334,14 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                   />
                   <p className="text-xs text-slate-500 mt-1">Cada turma possui limite de 10 vagas.</p>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Professor(a)</label>
+                <select required value={editingTurma?.professor || ""} onChange={e => setEditingTurma(prev => ({...prev, professor: e.target.value}))} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                  <option value="" disabled>Selecione o professor</option>
+                  {PROFESSORES.map(nome => <option key={nome} value={nome}>{nome}</option>)}
+                </select>
               </div>
 
               <div>
