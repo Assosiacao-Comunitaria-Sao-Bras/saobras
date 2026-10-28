@@ -106,6 +106,8 @@ export default function MatriculasClient({
 
   const [alunoBusca, setAlunoBusca] = useState("");
 
+  const [turmaBusca, setTurmaBusca] = useState("");
+
   useEffect(() => {
     setMatriculas(matriculasIniciais);
   }, [matriculasIniciais]);
@@ -118,6 +120,8 @@ export default function MatriculasClient({
     setSelectedTurma("");
 
     setAlunoBusca("");
+
+    setTurmaBusca("");
 
     if (alunos.length === 0 || turmas.length === 0) {
       setIsLoadingFormDados(true);
@@ -175,6 +179,46 @@ export default function MatriculasClient({
         (a.cpf && a.cpf.includes(lower))
     );
   }, [alunos, alunoBusca]);
+
+  // ============================================================
+  // LISTA DE TURMAS AGRUPADA POR CURSO (com pesquisa)
+  // ============================================================
+  const turmasAgrupadas = useMemo(() => {
+    const norm = (t: string) =>
+      t
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+    const termo = norm(turmaBusca.trim());
+
+    const filtradas = termo
+      ? turmas.filter((t) =>
+          norm(
+            [
+              t.cursos?.titulo,
+              t.nome,
+              t.horario,
+              (t.dias_semana || []).join(" "),
+            ]
+              .filter(Boolean)
+              .join(" ")
+          ).includes(termo)
+        )
+      : turmas;
+
+    const grupos = new Map<string, Turma[]>();
+
+    for (const t of filtradas) {
+      const chave = t.cursos?.titulo || "Sem curso";
+      if (!grupos.has(chave)) grupos.set(chave, []);
+      grupos.get(chave)!.push(t);
+    }
+
+    return Array.from(grupos.entries()).sort(([a], [b]) =>
+      a.localeCompare(b, "pt-BR")
+    );
+  }, [turmas, turmaBusca]);
 
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -599,36 +643,75 @@ export default function MatriculasClient({
                         2. Selecione a Turma
                       </label>
 
-                      <select
-                        required
-                        value={selectedTurma}
+                      <input
+                        type="text"
+                        placeholder="Pesquisar por curso, turma, horário ou dia..."
+                        value={turmaBusca}
                         onChange={(e) =>
-                          setSelectedTurma(
-                            e.target.value
-                          )
+                          setTurmaBusca(e.target.value)
                         }
-                        className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="" disabled>
-                          Escolha uma turma para matricular
-                        </option>
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm mb-2"
+                      />
 
-                        {turmas.map((t) => (
-                          <option
-                            key={t.id}
-                            value={t.id}
-                          >
-                            {t.cursos?.titulo
-                              ? `${t.cursos.titulo} - `
-                              : ""}
-                            {t.nome}
+                      <div className="border border-slate-200 rounded-md max-h-64 overflow-y-auto bg-slate-50">
+                        {turmasAgrupadas.length === 0 ? (
+                          <div className="p-3 text-sm text-slate-500 text-center">
+                            Nenhuma turma encontrada.
+                          </div>
+                        ) : (
+                          turmasAgrupadas.map(
+                            ([curso, lista]) => (
+                              <div key={curso}>
+                                <div className="sticky top-0 z-10 px-3 py-1.5 bg-slate-100 border-b border-slate-200 text-xs font-bold uppercase tracking-wide text-slate-600">
+                                  {curso}
+                                </div>
 
-                            {t.horario
-                              ? ` (${t.horario})`
-                              : ""}
-                          </option>
-                        ))}
-                      </select>
+                                {lista.map((t) => (
+                                  <label
+                                    key={t.id}
+                                    className={`flex items-start gap-3 p-3 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-blue-50 transition-colors ${
+                                      selectedTurma === t.id
+                                        ? "bg-blue-50"
+                                        : ""
+                                    }`}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name="turma"
+                                      value={t.id}
+                                      checked={
+                                        selectedTurma === t.id
+                                      }
+                                      onChange={() =>
+                                        setSelectedTurma(t.id)
+                                      }
+                                      className="mt-1 w-4 h-4 text-blue-600"
+                                    />
+
+                                    <div>
+                                      <p className="font-bold text-slate-800 text-sm">
+                                        {t.nome}
+                                      </p>
+
+                                      <p className="text-xs text-slate-500">
+                                        {[
+                                          t.horario,
+                                          (t.dias_semana || []).length > 0
+                                            ? (t.dias_semana || []).join(", ")
+                                            : null,
+                                        ]
+                                          .filter(Boolean)
+                                          .join(" • ") ||
+                                          "Horário não informado"}
+                                      </p>
+                                    </div>
+                                  </label>
+                                ))}
+                              </div>
+                            )
+                          )
+                        )}
+                      </div>
                     </div>
                   </>
                 )}
