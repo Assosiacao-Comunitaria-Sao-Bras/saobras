@@ -18,6 +18,8 @@ import { supabase } from "@/lib/supabase";
 import { baixarFichaAposMatricula, baixarFichaPorMatricula } from "@/lib/ficha-inscricao";
 import { useRouter } from "next/navigation";
 import { AlunosOverview, StatusAlunoBadge } from "./AlunosOverview";
+import { CampoLista } from "./CampoLista";
+import { MUNICIPIOS, BAIRROS_FEIRA_DE_SANTANA, ehFeiraDeSantana } from "@/lib/localidades";
 import { calcularSituacaoAluno, indexarFrequencias, type RegistroFrequenciaAluno } from "@/lib/alunos-situacao";
 
 export type Aluno = {
@@ -1541,46 +1543,39 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">
-                          Bairro
+                          Município
                         </label>
 
-                        <input
-                          type="text"
+                        <CampoLista
                           disabled={!hasAge}
-                          value={
-                            formData.bairro ||
-                            ""
-                          }
-                          onChange={(e) =>
-                            handleInputChange(
-                              "bairro",
-                              e.target.value
-                            )
-                          }
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors disabled:bg-slate-100"
+                          value={formData.municipio || ""}
+                          options={MUNICIPIOS}
+                          onChange={(v) => handleInputChange("municipio", v)}
                         />
                       </div>
 
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">
-                          Município
+                          Bairro
                         </label>
 
-                        <input
-                          type="text"
-                          disabled={!hasAge}
-                          value={
-                            formData.municipio ||
-                            ""
-                          }
-                          onChange={(e) =>
-                            handleInputChange(
-                              "municipio",
-                              e.target.value
-                            )
-                          }
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors disabled:bg-slate-100"
-                        />
+                        {ehFeiraDeSantana(formData.municipio) ? (
+                          <CampoLista
+                            disabled={!hasAge}
+                            value={formData.bairro || ""}
+                            options={BAIRROS_FEIRA_DE_SANTANA}
+                            onChange={(v) => handleInputChange("bairro", v)}
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            disabled={!hasAge}
+                            value={formData.bairro || ""}
+                            placeholder={formData.municipio ? "Digite o bairro" : "Escolha o município primeiro"}
+                            onChange={(e) => handleInputChange("bairro", e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors disabled:bg-slate-100"
+                          />
+                        )}
                       </div>
                     </div>
 
