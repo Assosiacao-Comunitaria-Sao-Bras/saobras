@@ -9,6 +9,7 @@ export type Curso = {
   id: string;
   titulo: string;
   descricao: string | null;
+  carga_horaria?: number | null;
   criado_por?: string | null;
   criado_em?: string;
 };
@@ -747,6 +748,10 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
     const payload = {
       titulo: editingCurso.titulo,
       descricao: editingCurso.descricao,
+      // Só envia a carga horária quando informada/alterada (compatível com banco sem a coluna)
+      ...(editingCurso.carga_horaria !== undefined
+        ? { carga_horaria: editingCurso.carga_horaria }
+        : {}),
     };
 
     let error;
@@ -973,6 +978,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                 <tr>
                   <th className="px-6 py-4">Curso</th>
                   <th className="px-6 py-4">Descrição</th>
+                  <th className="px-6 py-4 text-center">Carga Horária</th>
                   <th className="px-6 py-4 text-center">Turmas Ativas</th>
                   <th className="px-6 py-4 text-right">Ações</th>
                 </tr>
@@ -991,6 +997,9 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                       <td className="px-6 py-4 text-slate-500 max-w-md truncate">
                         {curso.descricao || <span className="italic text-slate-400">Sem descrição</span>}
                       </td>
+                      <td className="px-6 py-4 text-center text-slate-700">
+                        {curso.carga_horaria ? `${curso.carga_horaria}h` : <span className="italic text-slate-400">—</span>}
+                      </td>
                       <td className="px-6 py-4 text-center">
                         <span className="inline-flex items-center justify-center bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full text-xs font-medium border border-slate-200">
                           {turmasDoCurso.length} {turmasDoCurso.length === 1 ? 'turma' : 'turmas'}
@@ -1007,7 +1016,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                 })}
                 {cursos.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center text-slate-500 bg-slate-50/50">
+                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500 bg-slate-50/50">
                       Nenhum curso cadastrado ainda.
                     </td>
                   </tr>
@@ -1283,6 +1292,18 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Descrição</label>
                 <textarea rows={3} value={editingCurso?.descricao || ""} onChange={e => setEditingCurso(prev => ({...prev, descricao: e.target.value}))} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"/>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Carga Horária (horas)</label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  placeholder="Ex.: 20"
+                  value={editingCurso?.carga_horaria ?? ""}
+                  onChange={e => setEditingCurso(prev => ({...prev, carga_horaria: e.target.value === "" ? null : Math.max(1, parseInt(e.target.value, 10) || 1)}))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                />
               </div>
               <div className="pt-4 flex justify-end gap-2">
                 {editingCurso?.id && (
