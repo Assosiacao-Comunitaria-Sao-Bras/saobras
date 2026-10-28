@@ -19,6 +19,7 @@ import { baixarFichaAposMatricula, baixarFichaPorMatricula } from "@/lib/ficha-i
 import { useRouter } from "next/navigation";
 import { AlunosOverview, StatusAlunoBadge } from "./AlunosOverview";
 import { CampoLista } from "./CampoLista";
+import { formatarNome } from "@/lib/validacao";
 import { MUNICIPIOS, BAIRROS_FEIRA_DE_SANTANA, ehFeiraDeSantana } from "@/lib/localidades";
 import { calcularSituacaoAluno, indexarFrequencias, type RegistroFrequenciaAluno } from "@/lib/alunos-situacao";
 
@@ -580,7 +581,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
        * Dados que serão gravados na tabela alunos.
        */
       const savePayload = {
-        nome_completo: formData.nome_completo,
+        nome_completo: formatarNome(formData.nome_completo || ""),
         cpf: formData.cpf,
         cpf_responsavel: formData.cpf_responsavel,
         telefone: formData.telefone,
@@ -588,8 +589,9 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
           formData.telefone_secundario,
         email: formData.email,
         idade: formData.idade,
-        nome_responsavel:
-          formData.nome_responsavel,
+        nome_responsavel: formData.nome_responsavel
+          ? formatarNome(formData.nome_responsavel)
+          : formData.nome_responsavel,
         bairro: formData.bairro,
         municipio: formData.municipio,
         status_estudante:
@@ -873,6 +875,12 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
         finalValue = value
           .replace(/\D/g, "")
           .slice(0, 11);
+      } else if (
+        field === "nome_completo" ||
+        field === "nome_responsavel"
+      ) {
+        // Primeira letra maiúscula e o resto minúsculo (de/da/do/dos/e ficam minúsculos)
+        finalValue = formatarNome(value, true);
       }
     }
 
