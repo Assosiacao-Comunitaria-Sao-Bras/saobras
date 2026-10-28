@@ -1,1884 +1,1446 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import {
-  X,
-  Edit2,
-  Trash2,
-  User,
-  Phone,
-  MapPin,
-  Mail,
-  Save,
-  AlertCircle,
-  BookOpen,
-  FileDown,
-} from "lucide-react";
+import { Fragment, useState, useEffect } from "react";
+import { Plus, Edit2, Trash2, Calendar, BookOpen, Clock, X, Save, Archive, RotateCcw, ChevronDown, ChevronUp, Users, CheckCircle2, XCircle, ClipboardList, Search, Filter } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { baixarFichaAposMatricula, baixarFichaPorMatricula } from "@/lib/ficha-inscricao";
 import { useRouter } from "next/navigation";
-import { AlunosOverview, StatusAlunoBadge } from "./AlunosOverview";
-import { CampoLista } from "./CampoLista";
-import { MUNICIPIOS, BAIRROS_FEIRA_DE_SANTANA, ehFeiraDeSantana } from "@/lib/localidades";
-import { calcularSituacaoAluno, indexarFrequencias, type RegistroFrequenciaAluno } from "@/lib/alunos-situacao";
 
-export type Aluno = {
+export type Curso = {
   id: string;
-  nome_completo: string;
-  cpf: string | null;
-  cpf_responsavel?: string | null;
-  nome_responsavel: string | null;
-  telefone: string | null;
-  telefone_secundario?: string | null;
-  email: string | null;
-  idade: number | null;
-  status_estudante: boolean | null;
-  bairro: string | null;
-  municipio: string | null;
-  criado_por: string | null;
-  criado_em: string;
-  nis: boolean;
-  tags_perfil?: string[] | null;
-  matriculas?: Matricula[];
-  curso_id?: string | null;
-  turma_id?: string | null;
+  titulo: string;
+  descricao: string | null;
+  carga_horaria?: number | null;
+  criado_por?: string | null;
+  criado_em?: string;
 };
 
-export type Matricula = {
+export type Turma = {
   id: string;
+  nome: string;
   curso_id: string;
-  turma_id?: string | null;
-  data_matricula?: string | null;
-  desistiu_em?: string | null;
-  turmas?: { nome: string } | { nome: string }[] | null;
-  cursos?: {
-    titulo: string;
-  } | { titulo: string }[] | null;
+  dias_semana: string[] | null;
+  turno: string | null;
+  horario: string | null;
+  professor?: string | null;
+  data_hora_inicio: string | null;
+  data_hora_fim: string | null;
+  vagas?: number;
+  status?: string | null;
+  criado_em?: string | null;
+  data_encerramento?: string | null;
+  cursos?: { titulo: string } | null;
 };
 
-const AVAILABLE_TAGS = [
-  {
-    label: "Deficiência Física",
-    color: "bg-blue-100 text-blue-800 border-blue-200",
-  },
-  {
-    label: "Deficiência Intelectual/Mental",
-    color: "bg-purple-100 text-purple-800 border-purple-200",
-  },
+const DIAS_SEMANA = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"];
+const LIMITE_VAGAS = 10;
+const PROFESSORES = [
+  "Elias Brito Lima Machado",
+  "Beatriz Santos Silva Pinho",
+  "Emerson Lucas Sacramento Lima",
+  "Gustavo Bezerra Nonato",
 ];
+const TURNOS = ["Manhã", "Tarde"];
+const HORARIOS = [
+  { turno: "Manhã", label: "08:30–09:30", inicio: "08:30", fim: "09:30" },
+  { turno: "Manhã", label: "08:30–10:00", inicio: "08:30", fim: "10:00" },
+  { turno: "Manhã", label: "09:30–10:30", inicio: "09:30", fim: "10:30" },
+  { turno: "Manhã", label: "10:00–11:30", inicio: "10:00", fim: "11:30" },
+  { turno: "Manhã", label: "10:30–11:30", inicio: "10:30", fim: "11:30" },
+  { turno: "Tarde", label: "14:30–15:30", inicio: "14:30", fim: "15:30" },
+  { turno: "Tarde", label: "14:30–16:00", inicio: "14:30", fim: "16:00" },
+  { turno: "Tarde", label: "15:30–16:30", inicio: "15:30", fim: "16:30" },
+  { turno: "Tarde", label: "16:00–17:30", inicio: "16:00", fim: "17:30" },
+  { turno: "Tarde", label: "16:30–17:30", inicio: "16:30", fim: "17:30" },
+] as const;
 
-export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia }: {
-  alunos: Aluno[];
-  registrosFrequencia?: RegistroFrequenciaAluno[];
-  erroFrequencia?: string;
+function getHorarioByLabel(label: string) {
+  return HORARIOS.find((h) => h.label === label);
+}
+
+function getHorarioLabel(turma: Turma) {
+  if (turma.horario) {
+    const horarioSalvo = turma.horario.replace(/\s*[-–]\s*/g, "–");
+    const h = HORARIOS.find((h) => h.label === horarioSalvo);
+    if (h) return h.label;
+
+    // Mantém compatibilidade com horários antigos salvos no banco.
+    const horariosAntigos: Record<string, string> = {
+      "08:30–10:00": "08:30–10:00",
+      "10:00–11:30": "10:00–11:30",
+      "14:30–16:00": "14:30–16:00",
+      "16:00–17:30": "16:00–17:30",
+    };
+    if (horariosAntigos[horarioSalvo]) return horariosAntigos[horarioSalvo];
+
+    return turma.horario;
+  }
+  if (turma.data_hora_inicio) {
+    const data = new Date(turma.data_hora_inicio);
+    const horaBrasil = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(data);
+    
+    if (turma.turno === "Manhã") {
+      if (horaBrasil === "08:30") return "08:30–10:00";
+      if (horaBrasil === "09:30") return "09:30–10:30";
+      if (horaBrasil === "10:00") return "10:00–11:30";
+      if (horaBrasil === "10:30") return "10:30–11:30";
+    }
+    if (turma.turno === "Tarde") {
+      if (horaBrasil === "14:30") return "14:30–16:00";
+      if (horaBrasil === "15:30") return "15:30–16:30";
+      if (horaBrasil === "16:00") return "16:00–17:30";
+      if (horaBrasil === "16:30") return "16:30–17:30";
+    }
+  }
+  return turma.turno === "Manhã" ? "08:30–10:00" : "14:30–16:00";
+}
+
+function criarDatasHorario(horarioLabel: string) {
+  const horario = getHorarioByLabel(horarioLabel);
+  if (!horario) throw new Error("Horário selecionado é inválido.");
+  
+  const hoje = new Date();
+  const ano = hoje.getFullYear();
+  const mes = String(hoje.getMonth() + 1).padStart(2, "0");
+  const dia = String(hoje.getDate()).padStart(2, "0");
+  
+  const inicio = `${ano}-${mes}-${dia}T${horario.inicio}:00-03:00`;
+  const fim = `${ano}-${mes}-${dia}T${horario.fim}:00-03:00`;
+  
+  return { inicio, fim };
+}
+
+const COLOR_THEMES = {
+  blue: {
+    cardBorder: 'border-t-blue-500',
+    gridCard: 'bg-blue-50 border-blue-400 hover:bg-blue-100',
+    gridTextSub: 'text-blue-700',
+    listCard: 'border-l-blue-400',
+    badge: 'bg-blue-100 text-blue-700 border-blue-200'
+  },
+  green: {
+    cardBorder: 'border-t-emerald-500',
+    gridCard: 'bg-emerald-50 border-emerald-400 hover:bg-emerald-100',
+    gridTextSub: 'text-emerald-700',
+    listCard: 'border-l-emerald-400',
+    badge: 'bg-emerald-100 text-emerald-700 border-emerald-200'
+  },
+  orange: {
+    cardBorder: 'border-t-orange-500',
+    gridCard: 'bg-orange-50 border-orange-400 hover:bg-orange-100',
+    gridTextSub: 'text-orange-700',
+    listCard: 'border-l-orange-400',
+    badge: 'bg-orange-100 text-orange-700 border-orange-200'
+  },
+  red: {
+    cardBorder: 'border-t-red-500',
+    gridCard: 'bg-red-50 border-red-400 hover:bg-red-100',
+    gridTextSub: 'text-red-700',
+    listCard: 'border-l-red-400',
+    badge: 'bg-red-100 text-red-700 border-red-200'
+  }
+};
+
+const getColorKeys = () => ["blue", "green", "orange", "red"] as const;
+const getColorForId = (id: string) => {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const keys = getColorKeys();
+  return keys[Math.abs(hash) % keys.length];
+};
+
+function formatarData(valor?: string | null) {
+  if (!valor) return "—";
+  const d = new Date(valor);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("pt-BR");
+}
+
+function turmaEncerrada(turma: Turma) {
+  return turma.status === "encerrada";
+}
+
+type AlunoDaTurma = {
+  matricula_id: string;
+  aluno_id: string | null;
+  nome: string;
+  cpf: string | null;
+  data_matricula: string | null;
+};
+
+type ResumoFreq = { presentes: number; faltas: number };
+
+type RegistroFreq = {
+  id: string;
+  turma_id: string;
+  data_hora: string;
+  status: string | null;
+  turmas?:
+    | { nome: string; status?: string | null; data_encerramento?: string | null; cursos?: { titulo: string } | { titulo: string }[] | null }
+    | { nome: string; status?: string | null; data_encerramento?: string | null; cursos?: { titulo: string } | { titulo: string }[] | null }[]
+    | null;
+};
+
+function statusEhFalta(status: string | null | undefined) {
+  return String(status || "presente").toLowerCase().trim() === "falta";
+}
+
+function percentualFreq(r?: ResumoFreq) {
+  if (!r) return null;
+  const total = r.presentes + r.faltas;
+  if (!total) return null;
+  return Math.round((r.presentes / total) * 100);
+}
+
+function corPercentual(p: number | null) {
+  if (p === null) return "bg-slate-100 text-slate-500 border-slate-200";
+  if (p >= 75) return "bg-emerald-100 text-emerald-700 border-emerald-200";
+  if (p >= 50) return "bg-amber-100 text-amber-700 border-amber-200";
+  return "bg-red-100 text-red-700 border-red-200";
+}
+
+function formatarDataSessao(valor: string) {
+  const d = new Date(valor);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+}
+
+// Busca todas as linhas de uma consulta, paginando (o Supabase limita ~1000 por vez).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function buscarTudo<T = any>(montar: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>) {
+  const passo = 1000;
+  const todos: T[] = [];
+  for (let de = 0; ; de += passo) {
+    const { data, error } = await montar(de, de + passo - 1);
+    if (error) throw error;
+    todos.push(...(data || []));
+    if (!data || data.length < passo) break;
+  }
+  return todos;
+}
+
+function ListaAlunos({
+  alunos,
+  frequencia,
+  onVerFrequencia,
+}: {
+  alunos: AlunoDaTurma[];
+  frequencia?: Record<string, ResumoFreq>;
+  onVerFrequencia: (aluno: AlunoDaTurma) => void;
 }) {
-  const router = useRouter();
+  if (alunos.length === 0) {
+    return (
+      <p className="text-sm italic text-slate-500">
+        Nenhum aluno matriculado nesta turma.
+      </p>
+    );
+  }
 
-  const [selectedAluno, setSelectedAluno] = useState<Aluno | null>(null);
-  const [limiteFrequencia, setLimiteFrequencia] = useState(30);
-  const frequencias = useMemo(() => indexarFrequencias(registrosFrequencia), [registrosFrequencia]);
-  const [salvandoDesistencia, setSalvandoDesistencia] = useState<string | null>(null);
-  const [erroMatriculas, setErroMatriculas] = useState("");
-  const [erroDesistencia, setErroDesistencia] = useState("");
-  const [confirmarDesistencia, setConfirmarDesistencia] = useState<Matricula | null>(null);
-  const [baixandoFicha, setBaixandoFicha] = useState<string | null>(null);
-  const [erroFicha, setErroFicha] = useState("");
+  return (
+    <ul className="divide-y divide-slate-100 rounded-md border border-slate-200 bg-white">
+      {alunos.map((a, i) => {
+        const resumo = a.aluno_id ? frequencia?.[a.aluno_id] : undefined;
+        const pct = percentualFreq(resumo);
+        return (
+          <li key={a.matricula_id}>
+            <button
+              type="button"
+              disabled={!a.aluno_id}
+              onClick={() => onVerFrequencia(a)}
+              title="Ver frequência do aluno"
+              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50 disabled:cursor-not-allowed"
+            >
+              <span className="min-w-0">
+                <span className="block truncate font-medium text-slate-800">
+                  {i + 1}. {a.nome}
+                </span>
+                <span className="block text-xs text-slate-500">
+                  {a.cpf || "sem CPF"} · matrícula {formatarData(a.data_matricula)}
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                {resumo && (resumo.presentes + resumo.faltas) > 0 && (
+                  <span className="text-xs text-slate-500">
+                    {resumo.presentes} pres. · {resumo.faltas} falta(s)
+                  </span>
+                )}
+                <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${corPercentual(pct)}`}>
+                  <ClipboardList className="h-3 w-3" />
+                  {pct === null ? "Frequência" : `${pct}%`}
+                </span>
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
-  // Estados para controlar os fluxos do modal
-  const [isEditing, setIsEditing] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
+function chaveMes(valor: string) {
+  const d = new Date(valor);
+  if (Number.isNaN(d.getTime())) return "0000-00";
+  return d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
+}
 
-  // Estado de Matrículas
-  const [matriculas, setMatriculas] = useState<Matricula[]>([]);
-  const [isLoadingMatriculas, setIsLoadingMatriculas] = useState(false);
+function rotuloMes(chave: string) {
+  const d = new Date(`${chave}-15T12:00:00`);
+  if (Number.isNaN(d.getTime())) return "Sem data";
+  const t = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
 
-  // Cursos disponíveis
-  const [cursos, setCursos] = useState<
-    { id: string; titulo: string }[]
-  >([]);
-  const [isLoadingCursos, setIsLoadingCursos] = useState(false);
+// Data (AAAA-MM-DD) no fuso de Brasília, para comparar com os filtros de data.
+function dataISOBrasil(valor?: string | null) {
+  if (!valor) return "";
+  const d = new Date(valor);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
 
-  // Turmas disponíveis
-  const [turmas, setTurmas] = useState<
-    { id: string; nome: string; curso_id: string; turno: string | null }[]
-  >([]);
-  const [isLoadingTurmas, setIsLoadingTurmas] = useState(false);
+function semAcento(texto: string) {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
 
-  const [formData, setFormData] = useState<Partial<Aluno>>({});
-  const [isSaving, setIsSaving] = useState(false);
-  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+function BarraFreq({ pct }: { pct: number | null }) {
+  const cor = pct === null ? "bg-slate-300" : pct >= 75 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-500" : "bg-red-500";
+  return (
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+      <div className={`h-full rounded-full ${cor}`} style={{ width: `${pct ?? 0}%` }} />
+    </div>
+  );
+}
 
-  // Estados da exclusão
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+function ModalFrequenciaAluno({
+  aluno,
+  turmaDestaqueId,
+  onClose,
+}: {
+  aluno: { aluno_id: string; nome: string; cpf: string | null };
+  turmaDestaqueId: string;
+  onClose: () => void;
+}) {
+  const [registros, setRegistros] = useState<RegistroFreq[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [abertas, setAbertas] = useState<Record<string, boolean>>({ [turmaDestaqueId]: true });
+  // undefined = usa o padrão (mês mais recente da turma aberta fica expandido)
+  const [mesesAbertos, setMesesAbertos] = useState<Record<string, boolean>>({});
 
-  /*
-   * ============================================================
-   * BUSCAR MATRÍCULAS DO ALUNO
-   * ============================================================
-   */
   useEffect(() => {
     let ativo = true;
-    if (selectedAluno && !isEditing) {
-      const fetchMatriculas = async () => {
-        setIsLoadingMatriculas(true);
-        setErroMatriculas("");
-        setMatriculas([]);
+    (async () => {
+      try {
+        const dados = await buscarTudo<RegistroFreq>((de, ate) =>
+          supabase
+            .from("presencas")
+            .select("id, turma_id, data_hora, status, turmas(nome, status, data_encerramento, cursos(titulo))")
+            .eq("aluno_id", aluno.aluno_id)
+            .order("data_hora", { ascending: true })
+            .range(de, ate) as unknown as PromiseLike<{ data: RegistroFreq[] | null; error: { message: string } | null }>
+        );
+        if (ativo) setRegistros(dados);
+      } catch (e) {
+        console.error("Erro ao carregar frequência do aluno:", e);
+        if (ativo) setErro("Não foi possível carregar a frequência deste aluno.");
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [aluno.aluno_id]);
 
-        const { data, error } = await supabase
-          .from("matriculas")
-          .select("*, cursos(titulo), turmas(nome)")
-          .eq("aluno_id", selectedAluno.id)
-          .order("data_matricula", { ascending: false });
+  // Agrupa os registros por turma
+  const grupos = (() => {
+    const mapa = new Map<
+      string,
+      { turmaId: string; nome: string; curso: string; encerrada: boolean; encerradaEm: string | null; registros: RegistroFreq[] }
+    >();
+    (registros || []).forEach((r) => {
+      const t = Array.isArray(r.turmas) ? r.turmas[0] : r.turmas;
+      const c = t?.cursos ? (Array.isArray(t.cursos) ? t.cursos[0] : t.cursos) : null;
+      if (!mapa.has(r.turma_id)) {
+        mapa.set(r.turma_id, {
+          turmaId: r.turma_id,
+          nome: t?.nome || "Turma removida",
+          curso: c?.titulo || "Curso indefinido",
+          encerrada: t?.status === "encerrada",
+          encerradaEm: t?.data_encerramento ?? null,
+          registros: [],
+        });
+      }
+      mapa.get(r.turma_id)!.registros.push(r);
+    });
+    return Array.from(mapa.values()).sort((a, b) => {
+      if (a.turmaId === turmaDestaqueId) return -1;
+      if (b.turmaId === turmaDestaqueId) return 1;
+      const ua = a.registros[a.registros.length - 1]?.data_hora || "";
+      const ub = b.registros[b.registros.length - 1]?.data_hora || "";
+      return ub.localeCompare(ua);
+    });
+  })();
 
-        if (!ativo) return;
+  const resumir = (lista: RegistroFreq[]): ResumoFreq => ({
+    presentes: lista.filter((r) => !statusEhFalta(r.status)).length,
+    faltas: lista.filter((r) => statusEhFalta(r.status)).length,
+  });
 
-        if (!error && data) {
-          setMatriculas(data as Matricula[]);
-        } else if (error) {
-          console.error("Erro ao carregar matrículas:", error.message);
-          setErroMatriculas("Não foi possível carregar as matrículas deste aluno.");
-          setMatriculas([]);
+  const totalGeral = resumir(registros || []);
+  const pctGeral = percentualFreq(totalGeral);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
+          <div className="min-w-0">
+            <h3 className="truncate text-lg font-bold text-slate-900">{aluno.nome}</h3>
+            <p className="text-xs text-slate-500">{aluno.cpf || "sem CPF"} · frequência por turma</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Fechar">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4 overflow-y-auto p-4">
+          {erro && <p className="text-sm text-red-600">{erro}</p>}
+          {!erro && registros === null && <p className="text-sm text-slate-500">Carregando frequência...</p>}
+
+          {registros && registros.length === 0 && (
+            <p className="text-sm italic text-slate-500">Nenhum registro de frequência para este aluno.</p>
+          )}
+
+          {registros && registros.length > 0 && (
+            <>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2">
+                  <p className="text-xl font-bold text-emerald-700">{totalGeral.presentes}</p>
+                  <p className="text-xs text-emerald-700">Presenças (geral)</p>
+                </div>
+                <div className="rounded-md border border-red-200 bg-red-50 p-2">
+                  <p className="text-xl font-bold text-red-700">{totalGeral.faltas}</p>
+                  <p className="text-xs text-red-700">Faltas (geral)</p>
+                </div>
+                <div className={`rounded-md border p-2 ${corPercentual(pctGeral)}`}>
+                  <p className="text-xl font-bold">{pctGeral === null ? "—" : `${pctGeral}%`}</p>
+                  <p className="text-xs">Frequência geral</p>
+                </div>
+              </div>
+
+              {grupos.map((g) => {
+                const r = resumir(g.registros);
+                const pct = percentualFreq(r);
+                const aberta = !!abertas[g.turmaId];
+                return (
+                  <div
+                    key={g.turmaId}
+                    className={`rounded-md border ${g.turmaId === turmaDestaqueId ? "border-blue-300" : "border-slate-200"}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setAbertas((prev) => ({ ...prev, [g.turmaId]: !prev[g.turmaId] }))}
+                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-slate-50"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold text-slate-800">
+                          {g.nome}
+                          {g.turmaId === turmaDestaqueId && (
+                            <span className="ml-2 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                              turma aberta
+                            </span>
+                          )}
+                        </span>
+                        <span className="block text-xs text-slate-500">
+                          {g.curso} · {g.encerrada ? `encerrada em ${formatarData(g.encerradaEm)}` : "em andamento"}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-xs text-slate-500">
+                          {r.presentes} pres. · {r.faltas} falta(s)
+                        </span>
+                        <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${corPercentual(pct)}`}>
+                          {pct === null ? "—" : `${pct}%`}
+                        </span>
+                        {aberta ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                      </span>
+                    </button>
+
+                    <div className="px-3 pb-2">
+                      <BarraFreq pct={pct} />
+                    </div>
+
+                    {aberta && (
+                      <div className="space-y-1.5 border-t border-slate-100 p-2">
+                        {(() => {
+                          const porMes = new Map<string, RegistroFreq[]>();
+                          g.registros.forEach((reg) => {
+                            const k = chaveMes(reg.data_hora);
+                            if (!porMes.has(k)) porMes.set(k, []);
+                            porMes.get(k)!.push(reg);
+                          });
+                          const chaves = Array.from(porMes.keys()).sort().reverse();
+                          return chaves.map((k, idx) => {
+                            const lista = porMes.get(k)!;
+                            const rm = resumir(lista);
+                            const pm = percentualFreq(rm);
+                            const idMes = `${g.turmaId}|${k}`;
+                            const padrao = g.turmaId === turmaDestaqueId && idx === 0;
+                            const mesAberto = mesesAbertos[idMes] ?? padrao;
+                            return (
+                              <div key={k} className="rounded border border-slate-200 bg-slate-50/60">
+                                <button
+                                  type="button"
+                                  onClick={() => setMesesAbertos((prev) => ({ ...prev, [idMes]: !mesAberto }))}
+                                  className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left hover:bg-slate-100"
+                                >
+                                  <span className="text-xs font-semibold text-slate-700">{rotuloMes(k)}</span>
+                                  <span className="flex items-center gap-2">
+                                    <span className="text-[11px] text-slate-500">
+                                      {rm.presentes} pres. · {rm.faltas} falta(s)
+                                    </span>
+                                    <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${corPercentual(pm)}`}>
+                                      {pm === null ? "—" : `${pm}%`}
+                                    </span>
+                                    {mesAberto ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" /> : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
+                                  </span>
+                                </button>
+                                {mesAberto && (
+                                  <div className="grid max-h-56 grid-cols-2 gap-1.5 overflow-y-auto border-t border-slate-200 p-2 sm:grid-cols-3">
+                                    {lista.map((reg) => {
+                                      const falta = statusEhFalta(reg.status);
+                                      return (
+                                        <div
+                                          key={reg.id}
+                                          className={`flex items-center gap-1.5 rounded border px-2 py-1 text-xs ${
+                                            falta
+                                              ? "border-red-200 bg-red-50 text-red-700"
+                                              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                          }`}
+                                        >
+                                          {falta ? <XCircle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                          {formatarDataSessao(reg.data_hora)} · {falta ? "Falta" : "Presente"}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+
+        <div className="flex justify-end border-t border-slate-200 p-3">
+          <button onClick={onClose} className="rounded-md bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[], turmas: Turma[] }) {
+  const router = useRouter();
+  const [turmas, setTurmas] = useState<Turma[]>(serverTurmas);
+  const [vagasOcupadas, setVagasOcupadas] = useState<Record<string, number>>({});
+  const [alunosPorTurma, setAlunosPorTurma] = useState<Record<string, AlunoDaTurma[]>>({});
+  const [turmaExpandida, setTurmaExpandida] = useState<string | null>(null);
+  const [freqPorTurma, setFreqPorTurma] = useState<Record<string, Record<string, ResumoFreq>>>({});
+  const [alunoFrequencia, setAlunoFrequencia] = useState<
+    { aluno_id: string; nome: string; cpf: string | null; turmaId: string } | null
+  >(null);
+
+  // Ao expandir uma turma encerrada, carrega o resumo de frequência de cada aluno nela.
+  useEffect(() => {
+    if (!turmaExpandida) return;
+    let ativo = true;
+    (async () => {
+      try {
+        const dados = await buscarTudo<{ aluno_id: string; status: string | null }>((de, ate) =>
+          supabase
+            .from("presencas")
+            .select("aluno_id, status")
+            .eq("turma_id", turmaExpandida)
+            .range(de, ate) as unknown as PromiseLike<{ data: { aluno_id: string; status: string | null }[] | null; error: { message: string } | null }>
+        );
+        const resumo: Record<string, ResumoFreq> = {};
+        dados.forEach((r) => {
+          if (!resumo[r.aluno_id]) resumo[r.aluno_id] = { presentes: 0, faltas: 0 };
+          if (statusEhFalta(r.status)) resumo[r.aluno_id].faltas++;
+          else resumo[r.aluno_id].presentes++;
+        });
+        if (ativo) setFreqPorTurma((prev) => ({ ...prev, [turmaExpandida]: resumo }));
+      } catch (e) {
+        console.error("Erro ao carregar frequência da turma:", e);
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [turmaExpandida]);
+  
+  useEffect(() => {
+    setTurmas(serverTurmas);
+  }, [serverTurmas]);
+
+  useEffect(() => {
+    let ativo = true;
+
+    const carregarVagas = async () => {
+      if (!serverTurmas || serverTurmas.length === 0) {
+        if (ativo) {
+          setVagasOcupadas({});
+          setAlunosPorTurma({});
         }
+        return;
+      }
 
-        setIsLoadingMatriculas(false);
+      const turmaIds = serverTurmas.map((turma) => turma.id);
+
+      const { data, error } = await supabase
+        .from("matriculas")
+        .select("id, turma_id, aluno_id, data_matricula, alunos(nome_completo, cpf)")
+        .in("turma_id", turmaIds);
+
+      if (error) {
+        console.error("Erro ao carregar quantidade de alunos por turma:", error);
+        return;
+      }
+
+      const contagem: Record<string, number> = {};
+      const listas: Record<string, AlunoDaTurma[]> = {};
+
+      turmaIds.forEach((id) => {
+        contagem[id] = 0;
+        listas[id] = [];
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (data || []).forEach((matricula: any) => {
+        const turmaId = matricula.turma_id as string | null;
+        if (!turmaId || !listas[turmaId]) return;
+
+        contagem[turmaId] = (contagem[turmaId] || 0) + 1;
+
+        const aluno = Array.isArray(matricula.alunos)
+          ? matricula.alunos[0]
+          : matricula.alunos;
+
+        listas[turmaId].push({
+          matricula_id: matricula.id,
+          aluno_id: matricula.aluno_id ?? null,
+          nome: aluno?.nome_completo || "Aluno sem nome",
+          cpf: aluno?.cpf ?? null,
+          data_matricula: matricula.data_matricula ?? null,
+        });
+      });
+
+      Object.values(listas).forEach((lista) =>
+        lista.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+      );
+
+      if (ativo) {
+        setVagasOcupadas(contagem);
+        setAlunosPorTurma(listas);
+      }
+    };
+
+    carregarVagas();
+
+    const canal = supabase
+      .channel("grade-semanal-matriculas")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "matriculas" },
+        () => {
+          carregarVagas();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      ativo = false;
+      supabase.removeChannel(canal);
+    };
+  }, [serverTurmas]);
+
+  const getVagasDisponiveis = (turma: Turma) => {
+    const ocupadas = vagasOcupadas[turma.id] || 0;
+    return Math.max(0, LIMITE_VAGAS - ocupadas);
+  };
+
+  const turmasAtivas = turmas.filter((t) => !turmaEncerrada(t));
+  const turmasEncerradas = turmas
+    .filter((t) => turmaEncerrada(t))
+    .sort((a, b) =>
+      (b.data_encerramento || "").localeCompare(a.data_encerramento || "")
+    );
+
+  const [mostrarEncerradas, setMostrarEncerradas] = useState(false);
+
+  // Filtros das turmas encerradas
+  const [filtroBusca, setFiltroBusca] = useState("");
+  const [filtroCurso, setFiltroCurso] = useState("");
+  const [filtroDe, setFiltroDe] = useState("");
+  const [filtroAte, setFiltroAte] = useState("");
+
+  const filtrosAtivos = !!(filtroBusca || filtroCurso || filtroDe || filtroAte);
+  const limparFiltros = () => {
+    setFiltroBusca("");
+    setFiltroCurso("");
+    setFiltroDe("");
+    setFiltroAte("");
+  };
+
+  const cursosDasEncerradas = Array.from(
+    new Map(
+      turmasEncerradas.map((t) => {
+        const titulo =
+          (Array.isArray(t.cursos) ? t.cursos[0]?.titulo : t.cursos?.titulo) ||
+          cursos.find((c) => c.id === t.curso_id)?.titulo ||
+          "Curso indefinido";
+        return [t.curso_id, titulo] as const;
+      })
+    ).entries()
+  ).sort((a, b) => a[1].localeCompare(b[1], "pt-BR"));
+
+  const turmasEncerradasFiltradas = turmasEncerradas.filter((t) => {
+    if (filtroCurso && t.curso_id !== filtroCurso) return false;
+
+    const dia = dataISOBrasil(t.data_encerramento);
+    if (filtroDe && (!dia || dia < filtroDe)) return false;
+    if (filtroAte && (!dia || dia > filtroAte)) return false;
+
+    if (filtroBusca) {
+      const termo = semAcento(filtroBusca);
+      const nomesAlunos = (alunosPorTurma[t.id] || []).map((a) => a.nome).join(" ");
+      const alvo = semAcento(`${t.nome} ${nomesAlunos}`);
+      if (!alvo.includes(termo)) return false;
+    }
+    return true;
+  });
+
+  const [activeTab, setActiveTab] = useState<"cursos" | "turmas">("turmas");
+
+  const [isCursoModalOpen, setIsCursoModalOpen] = useState(false);
+  const [isTurmaModalOpen, setIsTurmaModalOpen] = useState(false);
+  const [editingCurso, setEditingCurso] = useState<Partial<Curso> | null>(null);
+  const [editingTurma, setEditingTurma] = useState<Partial<Turma> | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSaveCurso = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCurso?.titulo) return;
+    setIsSaving(true);
+
+    const payload = {
+      titulo: editingCurso.titulo,
+      descricao: editingCurso.descricao,
+      // Só envia a carga horária quando informada/alterada (compatível com banco sem a coluna)
+      ...(editingCurso.carga_horaria !== undefined
+        ? { carga_horaria: editingCurso.carga_horaria }
+        : {}),
+    };
+
+    let error;
+    if (editingCurso.id) {
+      const { error: updateError } = await supabase.from("cursos").update(payload).eq("id", editingCurso.id);
+      error = updateError;
+    } else {
+      const insertPayload = {
+        ...payload,
+        criado_em: new Date().toISOString(),
       };
-
-      fetchMatriculas();
-    }
-    return () => { ativo = false; };
-  }, [selectedAluno, isEditing]);
-
-  /*
-   * ============================================================
-   * BUSCAR CURSOS
-   * ============================================================
-   */
-  useEffect(() => {
-    const fetchCursos = async () => {
-      setIsLoadingCursos(true);
-
-      const { data, error } = await supabase
-        .from("cursos")
-        .select("id, titulo")
-        .order("titulo", { ascending: true });
-
-      if (!error && data) {
-        setCursos(data);
-      } else if (error) {
-        console.error("Erro ao carregar cursos:", error.message);
-        setCursos([]);
-      }
-
-      setIsLoadingCursos(false);
-    };
-
-    fetchCursos();
-  }, []);
-
-  /*
-   * ============================================================
-   * BUSCAR TURMAS
-   * ============================================================
-   */
-  useEffect(() => {
-    const fetchTurmas = async () => {
-      setIsLoadingTurmas(true);
-
-      const { data, error } = await supabase
-        .from("turmas")
-        .select("id, nome, curso_id, turno")
-        .eq("status", "ativa")
-        .order("nome", { ascending: true });
-
-      if (!error && data) {
-        setTurmas(data);
-      } else if (error) {
-        console.error("Erro ao carregar turmas:", error.message);
-        setTurmas([]);
-      }
-
-      setIsLoadingTurmas(false);
-    };
-
-    fetchTurmas();
-  }, []);
-
-  /*
-   * ============================================================
-   * DESCOBRIR O OPERADOR LOGADO
-   *
-   * IMPORTANTE:
-   * auth.users.id NÃO é o mesmo que operadores.id.
-   *
-   * A tabela matriculas possui:
-   *
-   * operador_id -> operadores.id
-   *
-   * Por isso usamos o e-mail do usuário autenticado para
-   * encontrar o registro correspondente na tabela operadores.
-   * ============================================================
-   */
-  const getOperadorId = async (): Promise<string> => {
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError) {
-      throw new Error(
-        "Não foi possível identificar o usuário logado: " +
-          userError.message
-      );
+      const { error: insertError } = await supabase.from("cursos").insert([insertPayload]);
+      error = insertError;
     }
 
-    if (!user) {
-      throw new Error(
-        "Usuário não está logado. Faça login novamente."
-      );
-    }
-
-    if (!user.email) {
-      throw new Error(
-        "O usuário logado não possui e-mail para identificar o operador."
-      );
-    }
-
-    const { data: operador, error: operadorError } = await supabase
-      .from("operadores")
-      .select("id")
-      .eq("email", user.email)
-      .maybeSingle();
-
-    if (operadorError) {
-      throw new Error(
-        "Erro ao localizar o operador: " +
-          operadorError.message
-      );
-    }
-
-    if (!operador) {
-      throw new Error(
-        `Nenhum operador foi encontrado com o e-mail ${user.email}. Verifique se este usuário está cadastrado na tabela operadores.`
-      );
-    }
-
-    return operador.id;
-  };
-
-  /*
-   * ============================================================
-   * FUNÇÕES DE MÁSCARA
-   * ============================================================
-   */
-
-  const formatCPF = (value: string) => {
-    return value
-      .replace(/\D/g, "")
-      .replace(/(\d{3})(\d)/, "$1.$2")
-      .replace(/(\d{3})(\d)/, "$1.$2")
-      .replace(/(\d{3})(\d{1,2})/, "$1-$2")
-      .replace(/(-\d{2})\d+?$/, "$1");
-  };
-
-  const formatPhone = (value: string) => {
-    let v = value.replace(/\D/g, "");
-
-    if (v.length > 11) {
-      v = v.slice(0, 11);
-    }
-
-    if (v.length > 10) {
-      return v.replace(
-        /^(\d{2})(\d{5})(\d{4}).*/,
-        "($1) $2-$3"
-      );
-    }
-
-    if (v.length > 5) {
-      return v.replace(
-        /^(\d{2})(\d{4})(\d{0,4}).*/,
-        "($1) $2-$3"
-      );
-    }
-
-    if (v.length > 2) {
-      return v.replace(
-        /^(\d{2})(\d{0,5})/,
-        "($1) $2"
-      );
-    }
-
-    return v;
-  };
-
-  /*
-   * ============================================================
-   * INICIAR NOVO CADASTRO
-   * ============================================================
-   */
-
-  const startCreating = () => {
-    setSelectedAluno(null);
-    setMatriculas([]);
-
-    setFormData({
-      status_estudante: true,
-      nis: false,
-      idade: undefined,
-      curso_id: "",
-      turma_id: "",
-      tags_perfil: [],
-    });
-
-    setIsCreating(true);
-    setIsEditing(true);
-  };
-
-  /*
-   * ============================================================
-   * INICIAR EDIÇÃO
-   * ============================================================
-   */
-
-  const startEditing = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const matriculaAtual =
-      matriculas.length > 0 ? matriculas[0] : null;
-
-    setFormData({
-      ...(selectedAluno || {}),
-      curso_id: matriculaAtual?.curso_id || "",
-      turma_id: matriculaAtual?.turma_id || "",
-    });
-
-    setIsEditing(true);
-  };
-
-  /*
-   * ============================================================
-   * FECHAR PAINEL
-   * ============================================================
-   */
-
-  const closePanel = () => {
-    setSelectedAluno(null);
-    setIsEditing(false);
-    setIsCreating(false);
-    setShowDeleteConfirm(false);
-    setShowDiscardConfirm(false);
-    setMatriculas([]);
-    setFormData({});
-    setErroDesistencia("");
-    setConfirmarDesistencia(null);
-  };
-
-  /*
-   * ============================================================
-   * TENTATIVA DE FECHAR
-   * ============================================================
-   */
-
-  const handleCloseAttempt = (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    if (salvandoDesistencia) return;
-
-    if (isEditing || isCreating) {
-      setShowDiscardConfirm(true);
-    } else {
-      closePanel();
-    }
-  };
-
-  const handleDiscardClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    setShowDiscardConfirm(true);
-  };
-
-  const confirmDiscard = () => {
-    setShowDiscardConfirm(false);
-
-    if (isCreating) {
-      closePanel();
-    } else {
-      setIsEditing(false);
-    }
-  };
-
-  const cancelDiscard = () => {
-    setShowDiscardConfirm(false);
-  };
-
-  const salvarDesistencia = async (matricula: Matricula) => {
-    if (!selectedAluno || salvandoDesistencia) return;
-    setSalvandoDesistencia(matricula.id);
-    setErroDesistencia("");
-    try {
-      const { data, error } = await supabase.from("matriculas")
-        .update({ desistiu_em: matricula.desistiu_em ? null : new Date().toISOString() })
-        .eq("id", matricula.id).eq("aluno_id", selectedAluno.id)
-        .select("*, cursos(titulo), turmas(nome)").single();
-      if (error) throw error;
-      const atualizada = data as Matricula;
-      const novasMatriculas = matriculas.map((item) => item.id === matricula.id ? atualizada : item);
-      setMatriculas(novasMatriculas);
-      setSelectedAluno((anterior) => anterior ? { ...anterior, matriculas: novasMatriculas } : anterior);
-      setConfirmarDesistencia(null);
-      router.refresh();
-    } catch {
-      setErroDesistencia("Não foi possível salvar a situação da matrícula. Tente novamente.");
-    } finally {
-      setSalvandoDesistencia(null);
-    }
-  };
-
-  /*
-   * ============================================================
-   * FICHA DE INSCRIÇÃO (PDF para imprimir e assinar)
-   * ============================================================
-   */
-  const baixarFicha = async (matricula: Matricula) => {
-    if (baixandoFicha) return;
-    setBaixandoFicha(matricula.id);
-    setErroFicha("");
-    try {
-      await baixarFichaPorMatricula(matricula.id);
-    } catch (erro) {
-      console.error("Erro ao gerar a ficha de inscrição:", erro);
-      setErroFicha(erro instanceof Error ? erro.message : "Não foi possível gerar a ficha de inscrição.");
-    } finally {
-      setBaixandoFicha(null);
-    }
-  };
-
-  /*
-   * ============================================================
-   * EXCLUSÃO
-   * ============================================================
-   */
-
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    setShowDeleteConfirm(true);
-  };
-
-  const handleDelete = async () => {
-    if (!selectedAluno) return;
-
-    setIsDeleting(true);
-
-    /*
-     * Primeiro removemos as matrículas do aluno.
-     * Isso evita erro de chave estrangeira caso o banco não
-     * esteja configurado com ON DELETE CASCADE.
-     */
-    const { error: matriculaError } = await supabase
-      .from("matriculas")
-      .delete()
-      .eq("aluno_id", selectedAluno.id);
-
-    if (matriculaError) {
-      setIsDeleting(false);
-
-      alert(
-        "Erro ao excluir as matrículas do aluno: " +
-          matriculaError.message
-      );
-
+    setIsSaving(false);
+    if (error) {
+      alert("Erro ao salvar curso: " + error.message);
       return;
     }
+    setIsCursoModalOpen(false);
+    router.refresh();
+  };
+
+  const handleDeleteCurso = async (id: string) => {
+    if (!confirm("Tem certeza que deseja excluir este curso?")) return;
+    const { error } = await supabase.from("cursos").delete().eq("id", id);
+    if (error) alert("Erro ao excluir: " + error.message);
+    else router.refresh();
+  };
+
+  const handleSaveTurma = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTurma?.nome || !editingTurma?.curso_id || !editingTurma?.professor || !editingTurma?.turno || !editingTurma?.horario) {
+      alert("Preencha nome, curso, professor, turno e horário!");
+      return;
+    }
+    setIsSaving(true);
+
+    const { inicio, fim } = criarDatasHorario(editingTurma.horario);
+
+    const payload = {
+      nome: editingTurma.nome,
+      curso_id: editingTurma.curso_id,
+      turno: editingTurma.turno,
+      dias_semana: editingTurma.dias_semana || [],
+      horario: editingTurma.horario,
+      professor: editingTurma.professor,
+      data_hora_inicio: inicio,
+      data_hora_fim: fim,
+      vagas: LIMITE_VAGAS
+    };
+
+    let error;
+    if (editingTurma.id) {
+      const { error: updateError } = await supabase.from("turmas").update(payload).eq("id", editingTurma.id);
+      error = updateError;
+    } else {
+      const insertPayload = {
+        ...payload,
+        status: "ativa",
+        criado_em: new Date().toISOString(),
+      };
+      const { error: insertError } = await supabase.from("turmas").insert([insertPayload]);
+      error = insertError;
+    }
+
+    setIsSaving(false);
+    if (error) {
+      alert("Erro ao salvar turma: " + error.message);
+      return;
+    }
+    setIsTurmaModalOpen(false);
+    router.refresh();
+  };
+
+  // Excluir só é permitido para turma SEM nenhum aluno e SEM frequência.
+  // Turma com histórico deve ser ENCERRADA (nada é apagado).
+  const handleDeleteTurma = async (id: string) => {
+    const { count: totalMatriculas, error: errMat } = await supabase
+      .from("matriculas")
+      .select("id", { count: "exact", head: true })
+      .eq("turma_id", id);
+
+    const { count: totalPresencas, error: errPres } = await supabase
+      .from("presencas")
+      .select("id", { count: "exact", head: true })
+      .eq("turma_id", id);
+
+    if (errMat || errPres) {
+      alert("Não foi possível verificar o histórico da turma. Use \"Encerrar turma\" para não perder dados.");
+      return;
+    }
+
+    if ((totalMatriculas || 0) > 0 || (totalPresencas || 0) > 0) {
+      alert(
+        `Esta turma tem ${totalMatriculas || 0} matrícula(s) e ${totalPresencas || 0} registro(s) de frequência.\n\nPara não perder o histórico, use "Encerrar turma" em vez de excluir.`
+      );
+      return;
+    }
+
+    if (!confirm("Esta turma não tem alunos nem frequência. Excluir definitivamente?")) return;
+    const { error } = await supabase.from("turmas").delete().eq("id", id);
+    if (error) alert("Erro ao excluir: " + error.message);
+    else {
+      setIsTurmaModalOpen(false);
+      router.refresh();
+    }
+  };
+
+  // Encerra a turma: ela sai da grade, mas alunos, matrículas e frequência continuam salvos.
+  const handleEncerrarTurma = async (turma: Partial<Turma>, abrirNova = false) => {
+    if (!turma.id) return;
+
+    const alunos = vagasOcupadas[turma.id] || 0;
+    const mensagem = abrirNova
+      ? `Encerrar a turma "${turma.nome}" (${alunos} aluno(s)) e abrir uma nova no mesmo horário?\n\nOs alunos, matrículas e a frequência da turma encerrada continuam salvos no histórico.`
+      : `Encerrar a turma "${turma.nome}" (${alunos} aluno(s))?\n\nEla sai da grade, mas os alunos, matrículas e a frequência continuam salvos no histórico. A data de hoje será registrada como data de encerramento.`;
+
+    if (!confirm(mensagem)) return;
 
     const { error } = await supabase
-      .from("alunos")
-      .delete()
-      .eq("id", selectedAluno.id);
-
-    setIsDeleting(false);
+      .from("turmas")
+      .update({
+        status: "encerrada",
+        data_encerramento: new Date().toISOString(),
+      })
+      .eq("id", turma.id);
 
     if (error) {
-      alert("Erro ao excluir aluno: " + error.message);
+      alert("Erro ao encerrar turma: " + error.message);
       return;
     }
 
-    setShowDeleteConfirm(false);
-
-    closePanel();
+    if (abrirNova) {
+      // Mantém o modal aberto já preenchido para criar a nova turma
+      setEditingTurma({
+        nome: "",
+        curso_id: turma.curso_id,
+        turno: turma.turno || "Manhã",
+        horario: turma.horario || "08:30–09:30",
+        professor: turma.professor || "",
+        dias_semana: turma.dias_semana || [],
+        vagas: LIMITE_VAGAS,
+      });
+      setIsTurmaModalOpen(true);
+    } else {
+      setIsTurmaModalOpen(false);
+    }
 
     router.refresh();
   };
 
-  /*
-   * ============================================================
-   * SALVAR ALUNO
-   * ============================================================
-   */
+  const handleReabrirTurma = async (turma: Turma) => {
+    if (!confirm(`Reabrir a turma "${turma.nome}"? Ela volta para a grade semanal.`)) return;
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+    const { error } = await supabase
+      .from("turmas")
+      .update({ status: "ativa", data_encerramento: null })
+      .eq("id", turma.id);
 
-    if (!formData.curso_id) {
-      alert(
-        "Selecione o curso do aluno antes de salvar."
-      );
-      return;
-    }
-
-    if (!formData.turma_id) {
-      alert("Selecione a turma do aluno antes de salvar.");
-      return;
-    }
-
-    if (!formData.idade) {
-      alert("Informe a idade do aluno.");
-      return;
-    }
-
-    if (!formData.nome_completo?.trim()) {
-      alert("Informe o nome completo do aluno.");
-      return;
-    }
-
-    if (!formData.cpf?.trim()) {
-      alert("Informe o CPF do aluno.");
-      return;
-    }
-
-    if (
-      formData.idade < 18 &&
-      !formData.nome_responsavel?.trim()
-    ) {
-      alert(
-        "Informe o nome do responsável para alunos menores de 18 anos."
-      );
-      return;
-    }
-
-    if (
-      formData.idade < 18 &&
-      !formData.cpf_responsavel?.trim()
-    ) {
-      alert(
-        "Informe o CPF do responsável para alunos menores de 18 anos."
-      );
-      return;
-    }
-
-    setIsSaving(true);
-
-    try {
-      /*
-       * Dados que serão gravados na tabela alunos.
-       */
-      const savePayload = {
-        nome_completo: formData.nome_completo,
-        cpf: formData.cpf,
-        cpf_responsavel: formData.cpf_responsavel,
-        telefone: formData.telefone,
-        telefone_secundario:
-          formData.telefone_secundario,
-        email: formData.email,
-        idade: formData.idade,
-        nome_responsavel:
-          formData.nome_responsavel,
-        bairro: formData.bairro,
-        municipio: formData.municipio,
-        status_estudante:
-          formData.status_estudante,
-        nis: formData.nis,
-        tags_perfil:
-          formData.tags_perfil || [],
-      };
-
-      let alunoId = selectedAluno?.id;
-
-      /*
-       * Guarda a matrícula recém-criada para gerar a ficha de
-       * inscrição depois que tudo for salvo.
-       */
-      let novaMatricula: { alunoId: string; turmaId: string } | null = null;
-
-      /*
-       * ========================================================
-       * NOVO ALUNO
-       * ========================================================
-       */
-      if (isCreating) {
-        /*
-         * PRIMEIRO:
-         * Descobrimos o operador.
-         *
-         * Fazemos isso ANTES de criar o aluno para evitar
-         * cadastrar um aluno e depois descobrir que não existe
-         * operador correspondente.
-         */
-        const operadorId = await getOperadorId();
-
-        /*
-         * 1. Criar aluno
-         */
-        const {
-          data: novoAluno,
-          error: alunoError,
-        } = await supabase
-          .from("alunos")
-          .insert([savePayload])
-          .select("id")
-          .single();
-
-        if (alunoError) {
-          throw new Error(
-            "Erro ao criar aluno: " +
-              alunoError.message
-          );
-        }
-
-        if (!novoAluno) {
-          throw new Error(
-            "O aluno foi criado, mas o ID não foi retornado."
-          );
-        }
-
-        alunoId = novoAluno.id;
-
-        /*
-         * 2. Criar matrícula
-         *
-         * IMPORTANTE:
-         * operador_id recebe operador.id,
-         * e NÃO auth.user.id.
-         */
-        const {
-          error: matriculaError,
-        } = await supabase
-          .from("matriculas")
-          .insert([
-            {
-              aluno_id: alunoId,
-              curso_id: formData.curso_id,
-              turma_id: formData.turma_id || null,
-              operador_id: operadorId,
-              data_matricula:
-                new Date().toISOString(),
-            },
-          ]);
-
-        if (matriculaError) {
-          /*
-           * Se a matrícula falhar, tentamos remover o aluno
-           * recém-criado para não deixar cadastro incompleto.
-           */
-          await supabase
-            .from("alunos")
-            .delete()
-            .eq("id", alunoId);
-
-          throw new Error(
-            "Aluno criado, mas a matrícula não pôde ser criada: " +
-              matriculaError.message
-          );
-        }
-
-        if (formData.turma_id) {
-                    novaMatricula = {
-            alunoId: novoAluno.id,
-            turmaId: formData.turma_id,
-          };
-        }
-      }
-
-      /*
-       * ========================================================
-       * EDITAR ALUNO
-       * ========================================================
-       */
-      else if (selectedAluno) {
-        /*
-         * 1. Atualizar dados do aluno
-         */
-        const {
-          error: alunoError,
-        } = await supabase
-          .from("alunos")
-          .update(savePayload)
-          .eq("id", selectedAluno.id);
-
-        if (alunoError) {
-          throw new Error(
-            "Erro ao atualizar aluno: " +
-              alunoError.message
-          );
-        }
-
-        /*
-         * 2. Buscar matrícula existente
-         */
-        const {
-          data: matriculasExistentes,
-          error: buscaMatriculaError,
-        } = await supabase
-          .from("matriculas")
-          .select("id, curso_id, turma_id")
-          .eq("aluno_id", selectedAluno.id)
-          .order("data_matricula", {
-            ascending: false,
-          });
-
-        if (buscaMatriculaError) {
-          throw new Error(
-            "Não foi possível consultar a matrícula: " +
-              buscaMatriculaError.message
-          );
-        }
-
-        const matriculaAtual =
-          matriculasExistentes?.[0];
-
-        /*
-         * 3. Se já existe matrícula, altera o curso
-         */
-        if (matriculaAtual) {
-          if (
-            matriculaAtual.curso_id !== formData.curso_id ||
-            (matriculaAtual.turma_id || null) !== (formData.turma_id || null)
-          ) {
-            const {
-              error: updateMatriculaError,
-            } = await supabase
-              .from("matriculas")
-              .update({
-                curso_id: formData.curso_id,
-                turma_id: formData.turma_id || null,
-              })
-              .eq("id", matriculaAtual.id);
-
-            if (updateMatriculaError) {
-              throw new Error(
-                "Aluno atualizado, mas não foi possível alterar o curso: " +
-                  updateMatriculaError.message
-              );
-            }
-          }
-        }
-
-        /*
-         * 4. Se o aluno não possui matrícula, cria uma.
-         */
-        else {
-          const operadorId =
-            await getOperadorId();
-
-          const {
-            error: matriculaError,
-          } = await supabase
-            .from("matriculas")
-            .insert([
-              {
-                aluno_id: selectedAluno.id,
-                curso_id: formData.curso_id,
-                turma_id: formData.turma_id || null,
-                operador_id: operadorId,
-                data_matricula:
-                  new Date().toISOString(),
-              },
-            ]);
-
-          if (matriculaError) {
-            throw new Error(
-              "Aluno atualizado, mas a matrícula não pôde ser criada: " +
-                matriculaError.message
-            );
-          }
-
-          if (formData.turma_id) {
-            novaMatricula = {
-              alunoId: selectedAluno.id,
-              turmaId: formData.turma_id,
-            };
-          }
-        }
-      }
-
-      /*
-       * Tudo certo
-       */
-      closePanel();
-
-      router.refresh();
-
-      /*
-       * Matrícula criada: baixa a ficha de inscrição para imprimir.
-       * Se a geração falhar, a matrícula continua salva e a ficha
-       * pode ser baixada depois pelo painel do aluno.
-       */
-      if (novaMatricula) {
-        const erroFichaGerada = await baixarFichaAposMatricula(
-          novaMatricula.alunoId,
-          novaMatricula.turmaId
-        );
-
-        if (erroFichaGerada) {
-          alert(
-            "A matrícula foi salva, mas não foi possível gerar a ficha de inscrição: " +
-              erroFichaGerada +
-              "\n\nVocê pode baixá-la depois, abrindo o aluno e clicando em \"Baixar ficha de inscrição\"."
-          );
-        }
-      }
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Erro desconhecido ao salvar.";
-
-      alert("Erro ao salvar: " + message);
-    } finally {
-      setIsSaving(false);
-    }
+    if (error) alert("Erro ao reabrir turma: " + error.message);
+    else router.refresh();
   };
 
-  /*
-   * ============================================================
-   * ALTERAÇÃO DOS CAMPOS
-   * ============================================================
-   */
-
-  const handleInputChange = (
-    field: keyof Aluno,
-    value: string | number | boolean | null
-  ) => {
-    let finalValue = value;
-
-    if (typeof value === "string") {
-      if (
-        field === "cpf" ||
-        field === "cpf_responsavel"
-      ) {
-        finalValue = value
-          .replace(/\D/g, "")
-          .slice(0, 11);
-      } else if (
-        field === "telefone" ||
-        field === "telefone_secundario"
-      ) {
-        finalValue = value
-          .replace(/\D/g, "")
-          .slice(0, 11);
-      }
-    }
-
-    setFormData((prev) => ({
-      ...prev,
-      [field]: finalValue,
-    }));
+  const toggleDiaSemana = (dia: string) => {
+    setEditingTurma(prev => {
+      if (!prev) return prev;
+      const current = prev.dias_semana || [];
+      const updated = current.includes(dia) ? current.filter(d => d !== dia) : [...current, dia];
+      return { ...prev, dias_semana: updated };
+    });
   };
 
-  /*
-   * ============================================================
-   * TAGS
-   * ============================================================
-   */
-
-  const handleTagToggle = (tag: string) => {
-    const currentTags =
-      formData.tags_perfil || [];
-
-    if (currentTags.includes(tag)) {
-      setFormData((prev) => ({
-        ...prev,
-        tags_perfil: currentTags.filter(
-          (t) => t !== tag
-        ),
-      }));
-    } else {
-      setFormData((prev) => ({
-        ...prev,
-        tags_perfil: [
-          ...currentTags,
-          tag,
-        ],
-      }));
-    }
+  const alterarTurno = (turno: string) => {
+    setEditingTurma(prev => {
+      if (!prev) return prev;
+      const primeiroHorario = turno === "Manhã" ? "08:30–09:30" : "14:30–15:30";
+      return { ...prev, turno, horario: primeiroHorario };
+    });
   };
 
-  const showModal =
-    !!selectedAluno || isCreating;
-
-  const situacaoSelecionada = selectedAluno ? calcularSituacaoAluno(
-    selectedAluno.matriculas ?? [], frequencias.get(selectedAluno.id) ?? [], limiteFrequencia,
-  ) : null;
-
-  /*
-   * ============================================================
-   * IDADE
-   * ============================================================
-   */
-
-  const hasAge =
-    formData.idade !== null &&
-    formData.idade !== undefined &&
-    !isNaN(formData.idade);
-
-  const isMinor =
-    hasAge &&
-    formData.idade! < 18;
-
-  /*
-   * ============================================================
-   * INTERFACE
-   * ============================================================
-   */
+  const getTurmasForCell = (horarioLabel: string, dia: string) => {
+    return turmasAtivas.filter(t => {
+      const tHorario = getHorarioLabel(t);
+      return tHorario === horarioLabel && (t.dias_semana || []).includes(dia);
+    });
+  };
 
   return (
-    <>
-      <AlunosOverview
-        alunos={alunos}
-        frequencias={frequencias}
-        erroFrequencia={erroFrequencia}
-        limite={limiteFrequencia}
-        onLimiteChange={setLimiteFrequencia}
-        onSelect={(aluno) => {
-          setSelectedAluno(aluno);
-          setMatriculas([]);
-          setIsLoadingMatriculas(true);
-          setErroDesistencia("");
-          setErroMatriculas("");
-          setErroFicha("");
-        }}
-        onCreate={startCreating}
-      />
-      {showModal && (
-        <div
-          className="fixed inset-0 bg-slate-900/60 z-40 flex items-center justify-center p-4 transition-opacity"
-          onClick={handleCloseAttempt}
-        >
-          <div
-            className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col transform transition-all"
-            onClick={(e) =>
-              e.stopPropagation()
-            }
-          >
-            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-lg">
-              <h2 className="text-lg font-semibold text-slate-900">
-                {isCreating
-                  ? "Cadastrar Novo Aluno"
-                  : isEditing
-                  ? "Editar Dados do Aluno"
-                  : "Detalhes do Aluno"}
-              </h2>
+    <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Cursos e Turmas</h1>
+          <p className="text-sm text-slate-500 mt-1">Organize os cursos, turmas, horários e dias das aulas.</p>
+        </div>
+        <div className="flex gap-2">
+          {activeTab === "cursos" ? (
+            <button onClick={() => { setEditingCurso({ titulo: "", descricao: "" }); setIsCursoModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Novo Curso
+            </button>
+          ) : (
+            <button onClick={() => { setEditingTurma({ nome: "", curso_id: "", professor: "", turno: "Manhã", horario: "08:30–09:30", dias_semana: [], vagas: LIMITE_VAGAS }); setIsTurmaModalOpen(true); }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Nova Turma
+            </button>
+          )}
+        </div>
+      </div>
 
-              <button
-                type="button"
-                onClick={handleCloseAttempt}
-                className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-md hover:bg-slate-200"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      <div className="flex border-b border-slate-200">
+        <button onClick={() => setActiveTab("turmas")} className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === "turmas" ? "border-emerald-500 text-emerald-700 bg-white" : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-white/50"}`}>
+          <Calendar className="w-4 h-4" /> Grade Semanal
+        </button>
+        <button onClick={() => setActiveTab("cursos")} className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === "cursos" ? "border-blue-500 text-blue-700 bg-white" : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-white/50"}`}>
+          <BookOpen className="w-4 h-4" /> Cursos (Disciplinas)
+        </button>
+      </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
-              {!isEditing &&
-              selectedAluno ? (
-                <>
-                  <div className="flex items-center gap-5 mb-8">
-                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 flex-shrink-0">
-                      <User className="w-8 h-8" />
-                    </div>
+      {activeTab === "cursos" && (
+        <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-4">Curso</th>
+                  <th className="px-6 py-4">Descrição</th>
+                  <th className="px-6 py-4 text-center">Carga Horária</th>
+                  <th className="px-6 py-4 text-center">Turmas Ativas</th>
+                  <th className="px-6 py-4 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {cursos.map(curso => {
+                  const turmasDoCurso = turmasAtivas.filter(t => t.curso_id === curso.id);
+                  const cursoColor = COLOR_THEMES[getColorForId(curso.id)];
 
-                    <div>
-                      <h3 className="text-2xl font-bold text-slate-900">
-                        {
-                          selectedAluno.nome_completo
-                        }
-                      </h3>
-
-                      <p className="text-sm text-slate-500 mt-1">
-                        Cadastrado em{" "}
-                        {new Date(
-                          selectedAluno.criado_em
-                        ).toLocaleDateString(
-                          "pt-BR"
-                        )}
-                      </p>
-                    </div>
-                  </div>
-
-                  {situacaoSelecionada && (
-                    <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                      <StatusAlunoBadge status={situacaoSelecionada.status} />
-                      <p className="mt-2 text-sm text-slate-600">
-                        {erroFrequencia ? "A frequência está indisponível no momento." : situacaoSelecionada.percentual === null
-                          ? "Sem chamadas registradas nas matrículas sem desistência."
-                          : `${situacaoSelecionada.percentual.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% de frequência: ${situacaoSelecionada.presentes} presença(s) e ${situacaoSelecionada.faltas} falta(s). Limite: ${limiteFrequencia}%.`}
-                      </p>
-                      {situacaoSelecionada.desistencias > 0 && <p className="mt-2 flex items-start gap-2 text-sm font-medium text-red-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />Aluno com desistência registrada em {situacaoSelecionada.desistencias} matrícula(s). Consulte os cursos abaixo.</p>}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-6">
-                      <div>
-                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-                          Contato
-                        </h4>
-
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-3 text-sm text-slate-700 bg-slate-50 p-2.5 rounded-md border border-slate-100">
-                            <Phone className="w-4 h-4 text-slate-400 flex-shrink-0" />
-
-                            <span className="truncate">
-                              {selectedAluno.telefone
-                                ? formatPhone(
-                                    selectedAluno.telefone
-                                  )
-                                : "Não informado"}
-                            </span>
-                          </div>
-
-                          {selectedAluno.telefone_secundario && (
-                            <div className="flex items-center gap-3 text-sm text-slate-700 bg-slate-50 p-2.5 rounded-md border border-slate-100">
-                              <Phone className="w-4 h-4 text-slate-400 flex-shrink-0" />
-
-                              <span className="truncate">
-                                {formatPhone(
-                                  selectedAluno.telefone_secundario
-                                )}{" "}
-                                (Secundário)
-                              </span>
-                            </div>
-                          )}
-
-                          <div className="flex items-center gap-3 text-sm text-slate-700 bg-slate-50 p-2.5 rounded-md border border-slate-100">
-                            <Mail className="w-4 h-4 text-slate-400 flex-shrink-0" />
-
-                            <span className="truncate">
-                              {selectedAluno.email ||
-                                "Não informado"}
-                            </span>
-                          </div>
+                  return (
+                    <tr key={curso.id} className="hover:bg-slate-50 group">
+                      <td className="px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
+                        <div className={`w-3 h-3 rounded-full ${cursoColor.badge} border`} title="Cor de identificação do curso" />
+                        {curso.titulo}
+                      </td>
+                      <td className="px-6 py-4 text-slate-500 max-w-md truncate">
+                        {curso.descricao || <span className="italic text-slate-400">Sem descrição</span>}
+                      </td>
+                      <td className="px-6 py-4 text-center text-slate-700">
+                        {curso.carga_horaria ? `${curso.carga_horaria}h` : <span className="italic text-slate-400">—</span>}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className="inline-flex items-center justify-center bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full text-xs font-medium border border-slate-200">
+                          {turmasDoCurso.length} {turmasDoCurso.length === 1 ? 'turma' : 'turmas'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => { setEditingCurso(curso); setIsCursoModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" title="Editar curso"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => handleDeleteCurso(curso.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Excluir curso"><Trash2 className="w-4 h-4" /></button>
                         </div>
-                      </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {cursos.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500 bg-slate-50/50">
+                      Nenhum curso cadastrado ainda.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
-                      <div>
-                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-                          Localização
-                        </h4>
+      {activeTab === "turmas" && (
+        <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-x-auto">
+          <table className="w-full text-sm text-left min-w-[1000px]">
+            <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+              <tr>
+                <th className="px-4 py-4 w-32 border-r border-slate-200 text-center"><Clock className="w-4 h-4 inline-block mr-1"/> Horário</th>
+                {DIAS_SEMANA.map(dia => (
+                  <th key={dia} className="px-4 py-4 border-r border-slate-200 text-center uppercase tracking-wider text-xs">{dia}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {HORARIOS.map(horario => (
+                <tr key={horario.label}>
+                  <td className="px-4 py-6 border-r border-slate-200 bg-slate-50 text-center font-bold text-slate-700 align-middle">
+                    {horario.label}<br/>
+                    <span className="text-xs font-normal text-slate-500">{horario.turno}</span>
+                  </td>
+                  {DIAS_SEMANA.map(dia => {
+                    const turmasNoDia = getTurmasForCell(horario.label, dia);
+                    return (
+                      <td key={dia} className="p-2 border-r border-slate-200 align-top bg-white min-h-[140px] h-[140px]">
+                        <div className="w-full flex flex-col gap-2 min-h-[124px]">
+                          {turmasNoDia.map(turma => {
+                            const turmaColor = COLOR_THEMES[getColorForId(turma.curso_id)];
+                            const match = turma.nome.match(/\b([A-Za-z])\b/);
+                            const watermark = match ? match[1].toUpperCase() : null;
 
-                        <div className="flex items-start gap-3 text-sm text-slate-700 bg-slate-50 p-2.5 rounded-md border border-slate-100">
-                          <MapPin className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
-
-                          <div>
-                            <p className="font-medium text-slate-800">
-                              {selectedAluno.bairro ||
-                                "Bairro não informado"}
-                            </p>
-
-                            <p className="text-slate-500">
-                              {selectedAluno.municipio ||
-                                "Município não informado"}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-                        Informações Pessoais
-                      </h4>
-
-                      <div className="bg-slate-50 p-4 rounded-md border border-slate-100 space-y-4">
-                        <div>
-                          <p className="text-xs text-slate-500 mb-1">
-                            Idade
-                          </p>
-
-                          <p className="text-sm font-medium text-slate-900">
-                            {selectedAluno.idade
-                              ? `${selectedAluno.idade} anos`
-                              : "-"}
-                          </p>
-                        </div>
-
-                        <div>
-                          <p className="text-xs text-slate-500 mb-1">
-                            CPF
-                          </p>
-
-                          <p className="text-sm font-medium text-slate-900">
-                            {selectedAluno.cpf
-                              ? formatCPF(
-                                  selectedAluno.cpf
-                                )
-                              : "-"}
-                          </p>
-                        </div>
-
-                        {selectedAluno.idade !== null &&
-                          selectedAluno.idade < 18 && (
-                            <div className="pt-3 mt-3 border-t border-slate-200">
-                              <p className="text-xs font-bold text-orange-600 mb-2">
-                                Dados do Responsável
-                              </p>
-
-                              <div className="mb-2">
-                                <p className="text-xs text-slate-500 mb-1">
-                                  Nome
-                                </p>
-
-                                <p className="text-sm font-medium text-slate-900">
-                                  {selectedAluno.nome_responsavel ||
-                                    "-"}
-                                </p>
-                              </div>
-
-                              <div>
-                                <p className="text-xs text-slate-500 mb-1">
-                                  CPF
-                                </p>
-
-                                <p className="text-sm font-medium text-slate-900">
-                                  {selectedAluno.cpf_responsavel
-                                    ? formatCPF(
-                                        selectedAluno.cpf_responsavel
-                                      )
-                                    : "-"}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {selectedAluno.tags_perfil &&
-                    selectedAluno.tags_perfil.length >
-                      0 && (
-                      <div className="mt-8 pt-8 border-t border-slate-200">
-                        <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-4">
-                          Perfil e Necessidades Específicas
-                        </h4>
-
-                        <div className="flex flex-wrap gap-2">
-                          {selectedAluno.tags_perfil.map(
-                            (tag) => {
-                              const foundTag =
-                                AVAILABLE_TAGS.find(
-                                  (t) =>
-                                    t.label === tag
-                                );
-
-                              const colorClass =
-                                foundTag
-                                  ? foundTag.color
-                                  : "bg-slate-100 text-slate-800 border-slate-200";
-
-                              return (
-                                <span
-                                  key={tag}
-                                  className={`px-3 py-1 rounded-full text-xs font-bold border ${colorClass}`}
-                                >
-                                  {tag}
-                                </span>
-                              );
-                            }
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                  {/* MATRÍCULAS */}
-                  <div className="mt-8 pt-8 border-t border-slate-200">
-                    <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-4">
-                      <BookOpen className="w-5 h-5 text-blue-600" />
-                      Matrículas do Aluno
-                    </h4>
-
-                    {erroDesistencia && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erroDesistencia}</p>}
-                    {erroMatriculas && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erroMatriculas}</p>}
-                    {erroFicha && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erroFicha}</p>}
-
-                    {isLoadingMatriculas ? (
-                      <div className="text-sm text-slate-500 animate-pulse bg-slate-50 p-4 rounded-md border border-slate-100 text-center">
-                        Carregando matrículas...
-                      </div>
-                    ) : erroMatriculas ? null : matriculas.length ===
-                      0 ? (
-                      <div className="bg-slate-50 p-4 rounded-md border border-slate-100 text-sm text-slate-500 text-center">
-                        Este aluno não possui matrículas no momento.
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {matriculas.map(
-                          (mat) => (
-                            <div
-                              key={mat.id}
-                              className="bg-white border border-slate-200 p-4 rounded-md shadow-sm flex flex-col justify-between"
-                            >
-                              <div>
-                                <div className="flex justify-between items-start mb-2">
-                                  <p className="font-bold text-slate-900 text-sm">
-                                    {(Array.isArray(mat.cursos) ? mat.cursos[0]?.titulo : mat.cursos?.titulo) ||
-                                      "Curso não especificado"}
-                                  </p>
-
-                                  <StatusAlunoBadge status={calcularSituacaoAluno([mat], frequencias.get(selectedAluno.id) ?? [], limiteFrequencia).status} />
-                                </div>
-
-                                <p className="text-xs text-slate-500">
-                                  {(Array.isArray(mat.cursos) ? mat.cursos[0]?.titulo : mat.cursos?.titulo)
-                                    ? `Curso: ${Array.isArray(mat.cursos) ? mat.cursos[0].titulo : mat.cursos?.titulo}`
-                                    : "Curso não disponível"}
-                                </p>
-
-                                {mat.data_matricula && (
-                                  <p className="text-xs text-slate-400 mt-2">
-                                    Matriculado em:{" "}
-                                    {new Date(
-                                      mat.data_matricula
-                                    ).toLocaleDateString(
-                                      "pt-BR"
-                                    )}
-                                  </p>
+                            return (
+                              <div 
+                                key={turma.id} 
+                                onClick={() => { setEditingTurma({...turma, horario: getHorarioLabel(turma)}); setIsTurmaModalOpen(true); }} 
+                                className={`group relative overflow-hidden flex-auto shrink-0 flex flex-col items-start justify-center p-3 rounded-md cursor-pointer transition-all text-left border-l-4 shadow-sm ${turmaColor.gridCard}`}
+                              >
+                                {watermark && (
+                                  <div className="absolute -right-2 -bottom-4 text-7xl font-black text-black opacity-10 pointer-events-none select-none z-0">
+                                    {watermark}
+                                  </div>
                                 )}
-                                <p className="mt-2 text-xs text-slate-500">Turma: {(Array.isArray(mat.turmas) ? mat.turmas[0]?.nome : mat.turmas?.nome) || "Não informada"}</p>
-                                {mat.desistiu_em && <p className="mt-2 text-xs font-medium text-red-700">Desistência registrada em {new Date(mat.desistiu_em).toLocaleDateString("pt-BR", { timeZone: "America/Bahia" })}</p>}
-                              </div>
-
-                              <div className="mt-4 border-t border-slate-100 pt-3">
                                 <button
-                                  type="button"
-                                  disabled={!!baixandoFicha}
-                                  onClick={() => baixarFicha(mat)}
-                                  className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEncerrarTurma(turma);
+                                  }}
+                                  className="absolute top-1.5 right-1.5 p-1 text-slate-500 hover:text-amber-700 hover:bg-white/80 rounded opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                                  title="Encerrar turma (mantém o histórico)"
                                 >
-                                  <FileDown className="h-4 w-4" />
-                                  {baixandoFicha === mat.id ? "Gerando ficha..." : "Baixar ficha de inscrição"}
+                                  <Archive className="w-3.5 h-3.5" />
                                 </button>
-                              </div>
-
-                              {Object.prototype.hasOwnProperty.call(mat, "desistiu_em") ? (
-                                <div className="mt-4 border-t border-slate-100 pt-3">
-                                  {confirmarDesistencia?.id === mat.id ? (
-                                    <div>
-                                      <p className="mb-2 text-xs text-slate-600">{mat.desistiu_em ? "Cancelar o registro de desistência desta matrícula?" : "Confirmar que o aluno desistiu deste curso? O histórico de frequência será preservado."}</p>
-                                      <div className="flex gap-3">
-                                        <button type="button" disabled={!!salvandoDesistencia} onClick={() => salvarDesistencia(mat)} className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{salvandoDesistencia === mat.id ? "Salvando..." : "Confirmar"}</button>
-                                        <button type="button" disabled={!!salvandoDesistencia} onClick={() => setConfirmarDesistencia(null)} className="px-2 py-2 text-xs text-slate-500 disabled:opacity-50">Voltar</button>
-                                      </div>
-                                    </div>
-                                  ) : <button type="button" disabled={!!salvandoDesistencia} onClick={() => setConfirmarDesistencia(mat)} className={`text-xs font-semibold hover:underline disabled:opacity-50 ${mat.desistiu_em ? "text-blue-600" : "text-red-600"}`}>{mat.desistiu_em ? "Cancelar registro de desistência" : "Registrar desistência"}</button>}
+                                <div className="font-bold text-slate-800 text-sm leading-tight mb-1 pr-5 relative z-10">{turma.nome}</div>
+                                <div className={`text-xs font-medium break-words mb-2 relative z-10 ${turmaColor.gridTextSub}`}>{(Array.isArray(turma.cursos) ? turma.cursos[0]?.titulo : turma.cursos?.titulo) || "Curso Indefinido"}</div>
+                                {turma.professor && <div className={`text-[11px] break-words mb-2 relative z-10 ${turmaColor.gridTextSub}`}>Prof. {turma.professor}</div>}
+                                <div className={`mt-auto inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border relative z-10 ${turmaColor.badge}`}>
+                                  {getVagasDisponiveis(turma)} vagas · {vagasOcupadas[turma.id] || 0} alunos
                                 </div>
-                              ) : <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-amber-700">O registro de desistência estará disponível após a atualização do sistema.</p>}
-                            </div>
-                          )
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <form
-                  id="edit-form"
-                  onSubmit={handleSave}
-                  className="space-y-6"
-                >
-                  {/* IDADE */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-1">
-                        Qual a idade do aluno?
-                      </label>
-
-                      <input
-                        type="number"
-                        required
-                        min="1"
-                        placeholder="Ex: 15"
-                        value={
-                          formData.idade || ""
-                        }
-                        onChange={(e) =>
-                          handleInputChange(
-                            "idade",
-                            e.target.value
-                              ? parseInt(
-                                  e.target.value
-                                )
-                              : null
-                          )
-                        }
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors"
-                      />
-                    </div>
-
-                    {!hasAge && (
-                      <div className="flex items-center text-sm text-slate-500 mt-4 md:mt-0">
-                        * Informe a idade primeiro para preencher o resto dos dados.
-                      </div>
-                    )}
-                  </div>
-
-                  {/* RESTANTE DO FORMULÁRIO */}
-                  <div
-                    className={`space-y-6 transition-opacity duration-300 ${
-                      !hasAge
-                        ? "opacity-30 pointer-events-none"
-                        : "opacity-100"
-                    }`}
-                  >
-                    {/* NOME E CPF */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                          Nome Completo
-                        </label>
-
-                        <input
-                          type="text"
-                          required
-                          disabled={!hasAge}
-                          value={
-                            formData.nome_completo ||
-                            ""
-                          }
-                          onChange={(e) =>
-                            handleInputChange(
-                              "nome_completo",
-                              e.target.value
-                            )
-                          }
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors disabled:bg-slate-100"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                          CPF do Aluno
-                        </label>
-
-                        <input
-                          type="text"
-                          required
-                          disabled={!hasAge}
-                          value={formatCPF(
-                            formData.cpf || ""
-                          )}
-                          onChange={(e) =>
-                            handleInputChange(
-                              "cpf",
-                              e.target.value
-                            )
-                          }
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors disabled:bg-slate-100"
-                        />
-                      </div>
-                    </div>
-
-                    {/* RESPONSÁVEL */}
-                    {(isMinor || !hasAge) && (
-                      <div className="p-4 bg-orange-50 border border-orange-200 rounded-md space-y-4">
-                        <h4 className="text-sm font-bold text-orange-800 flex items-center gap-2">
-                          <AlertCircle className="w-4 h-4" />
-                          Dados do Responsável (Obrigatório para Menores)
-                        </h4>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-orange-900 mb-1">
-                              Nome do Responsável
-                            </label>
-
-                            <input
-                              type="text"
-                              required={isMinor}
-                              disabled={!hasAge}
-                              value={
-                                formData.nome_responsavel ||
-                                ""
-                              }
-                              onChange={(e) =>
-                                handleInputChange(
-                                  "nome_responsavel",
-                                  e.target.value
-                                )
-                              }
-                              className="w-full px-3 py-2 bg-white border border-orange-200 rounded-md text-slate-900 focus:outline-none focus:border-orange-500 text-sm transition-colors disabled:bg-orange-50/50"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-orange-900 mb-1">
-                              CPF do Responsável
-                            </label>
-
-                            <input
-                              type="text"
-                              required={isMinor}
-                              disabled={!hasAge}
-                              value={formatCPF(
-                                formData.cpf_responsavel ||
-                                  ""
-                              )}
-                              onChange={(e) =>
-                                handleInputChange(
-                                  "cpf_responsavel",
-                                  e.target.value
-                                )
-                              }
-                              className="w-full px-3 py-2 bg-white border border-orange-200 rounded-md text-slate-900 focus:outline-none focus:border-orange-500 text-sm transition-colors disabled:bg-orange-50/50"
-                            />
-                          </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      </div>
-                    )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-                    {/* TELEFONES E E-MAIL */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                          Telefone Principal
-                        </label>
+      {/* TURMAS ENCERRADAS (HISTÓRICO) */}
+      {activeTab === "turmas" && (
+        <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setMostrarEncerradas((v) => !v)}
+            className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-slate-50"
+          >
+            <span className="flex items-center gap-2 font-bold text-slate-700">
+              <Archive className="w-4 h-4 text-amber-600" />
+              Turmas encerradas
+              <span className="inline-flex items-center justify-center bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full text-xs font-medium border border-slate-200">
+                {turmasEncerradas.length}
+              </span>
+            </span>
+            {mostrarEncerradas ? (
+              <ChevronUp className="w-4 h-4 text-slate-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-slate-400" />
+            )}
+          </button>
 
-                        <input
-                          type="text"
-                          required
-                          disabled={!hasAge}
-                          value={formatPhone(
-                            formData.telefone ||
-                              ""
-                          )}
-                          onChange={(e) =>
-                            handleInputChange(
-                              "telefone",
-                              e.target.value
-                            )
-                          }
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors disabled:bg-slate-100"
-                        />
-                      </div>
-
-                      {(isMinor || !hasAge) && (
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-1">
-                            Telefone Secundário (Opcional)
-                          </label>
-
-                          <input
-                            type="text"
-                            disabled={!hasAge}
-                            value={formatPhone(
-                              formData.telefone_secundario ||
-                                ""
-                            )}
-                            onChange={(e) =>
-                              handleInputChange(
-                                "telefone_secundario",
-                                e.target.value
-                              )
-                            }
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors disabled:bg-slate-100"
-                          />
-                        </div>
-                      )}
-
-                      {!isMinor &&
-                        hasAge && (
-                          <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">
-                              E-mail
-                            </label>
-
-                            <input
-                              type="email"
-                              value={
-                                formData.email ||
-                                ""
-                              }
-                              onChange={(e) =>
-                                handleInputChange(
-                                  "email",
-                                  e.target.value
-                                )
-                              }
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors"
-                            />
-                          </div>
-                        )}
-                    </div>
-
-                    {(isMinor || !hasAge) && (
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                          E-mail
-                        </label>
-
-                        <input
-                          type="email"
-                          disabled={!hasAge}
-                          value={
-                            formData.email || ""
-                          }
-                          onChange={(e) =>
-                            handleInputChange(
-                              "email",
-                              e.target.value
-                            )
-                          }
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors disabled:bg-slate-100"
-                        />
-                      </div>
-                    )}
-
-                    {/* LOCALIZAÇÃO */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                          Município
-                        </label>
-
-                        <CampoLista
-                          disabled={!hasAge}
-                          value={formData.municipio || ""}
-                          options={MUNICIPIOS}
-                          onChange={(v) => handleInputChange("municipio", v)}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                          Bairro
-                        </label>
-
-                        {ehFeiraDeSantana(formData.municipio) ? (
-                          <CampoLista
-                            disabled={!hasAge}
-                            value={formData.bairro || ""}
-                            options={BAIRROS_FEIRA_DE_SANTANA}
-                            onChange={(v) => handleInputChange("bairro", v)}
-                          />
-                        ) : (
-                          <input
-                            type="text"
-                            disabled={!hasAge}
-                            value={formData.bairro || ""}
-                            placeholder={formData.municipio ? "Digite o bairro" : "Escolha o município primeiro"}
-                            onChange={(e) => handleInputChange("bairro", e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors disabled:bg-slate-100"
-                          />
-                        )}
-                      </div>
-                    </div>
-
-                    {/* =====================================================
-                        CURSO
-                    ====================================================== */}
-                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
-                      <div className="flex items-center gap-2 mb-2">
-                        <BookOpen className="w-4 h-4 text-blue-600" />
-
-                        <label className="block text-sm font-bold text-blue-900">
-                          Curso do aluno
-                        </label>
-                      </div>
-
-                      <select
-                        required
-                        disabled={
-                          !hasAge ||
-                          isLoadingCursos
-                        }
-                        value={
-                          formData.curso_id || ""
-                        }
-                        onChange={(e) =>
-                          handleInputChange(
-                            "curso_id",
-                            e.target.value
-                          )
-                        }
-                        className="w-full px-3 py-2 bg-white border border-blue-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm disabled:bg-blue-50/50"
-                      >
-                        <option value="">
-                          {isLoadingCursos
-                            ? "Carregando cursos..."
-                            : "Selecione um curso"}
-                        </option>
-
-                        {cursos.map(
-                          (curso) => (
-                            <option
-                              key={curso.id}
-                              value={curso.id}
-                            >
-                              {curso.titulo}
-                            </option>
-                          )
-                        )}
-                      </select>
-
-                      <p className="text-xs text-blue-700 mt-2">
-                        O curso selecionado será usado para criar ou atualizar a matrícula do aluno.
-                      </p>
-                    </div>
-
-                    {/* TURMA */}
-                    <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-md">
-                      <div className="flex items-center gap-2 mb-2">
-                        <BookOpen className="w-4 h-4 text-emerald-600" />
-                        <label className="block text-sm font-bold text-emerald-900">
-                          Turma do aluno
-                        </label>
-                      </div>
-
-                      <select
-                        required
-                        disabled={!formData.curso_id || isLoadingTurmas}
-                        value={formData.turma_id || ""}
-                        onChange={(e) =>
-                          handleInputChange("turma_id", e.target.value)
-                        }
-                        className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-md text-slate-900 focus:outline-none focus:border-emerald-500 text-sm disabled:bg-emerald-50/50"
-                      >
-                        <option value="">
-                          {isLoadingTurmas
-                            ? "Carregando turmas..."
-                            : !formData.curso_id
-                            ? "Selecione primeiro o curso"
-                            : "Selecione uma turma"}
-                        </option>
-
-                        {turmas
-                          .filter((turma) => turma.curso_id === formData.curso_id)
-                          .map((turma) => (
-                            <option key={turma.id} value={turma.id}>
-                              {turma.nome}
-                              {turma.turno ? ` — ${turma.turno}` : ""}
-                            </option>
-                          ))}
-                      </select>
-
-                      <p className="text-xs text-emerald-700 mt-2">
-                        A turma é usada para mostrar o aluno corretamente no check-in manual.
-                      </p>
-                    </div>
-
-                    {/* TAGS */}
-                    <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-md">
-                      <div className="flex gap-6 flex-wrap">
-                        <label
-                          className={`flex items-center gap-2 text-sm font-medium text-slate-700 ${
-                            !hasAge
-                              ? "cursor-not-allowed"
-                              : "cursor-pointer"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            disabled={!hasAge}
-                            checked={(
-                              formData.tags_perfil ||
-                              []
-                            ).includes(
-                              "Deficiência Física"
-                            )}
-                            onChange={() =>
-                              handleTagToggle(
-                                "Deficiência Física"
-                              )
-                            }
-                            className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 disabled:opacity-50"
-                          />
-
-                          Deficiência Física
-                        </label>
-
-                        <label
-                          className={`flex items-center gap-2 text-sm font-medium text-slate-700 ${
-                            !hasAge
-                              ? "cursor-not-allowed"
-                              : "cursor-pointer"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            disabled={!hasAge}
-                            checked={(
-                              formData.tags_perfil ||
-                              []
-                            ).includes(
-                              "Deficiência Intelectual/Mental"
-                            )}
-                            onChange={() =>
-                              handleTagToggle(
-                                "Deficiência Intelectual/Mental"
-                              )
-                            }
-                            className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 disabled:opacity-50"
-                          />
-
-                          Deficiência Intelectual/Mental
-                        </label>
-                      </div>
-                    </div>
+          {mostrarEncerradas && (
+            <div className="border-t border-slate-200 bg-slate-50 px-5 py-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="md:col-span-1">
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Buscar turma ou aluno</label>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={filtroBusca}
+                      onChange={(e) => setFiltroBusca(e.target.value)}
+                      placeholder="Nome da turma ou do aluno"
+                      className="w-full rounded-md border border-slate-300 bg-white py-2 pl-8 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
                   </div>
-                </form>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Curso</label>
+                  <select
+                    value={filtroCurso}
+                    onChange={(e) => setFiltroCurso(e.target.value)}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="">Todos os cursos</option>
+                    {cursosDasEncerradas.map(([id, titulo]) => (
+                      <option key={id} value={id}>{titulo}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Encerrada a partir de</label>
+                  <input
+                    type="date"
+                    value={filtroDe}
+                    max={filtroAte || undefined}
+                    onChange={(e) => setFiltroDe(e.target.value)}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Encerrada até</label>
+                  <input
+                    type="date"
+                    value={filtroAte}
+                    min={filtroDe || undefined}
+                    onChange={(e) => setFiltroAte(e.target.value)}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-500">
+                <span className="inline-flex items-center gap-1.5">
+                  <Filter className="h-3.5 w-3.5" />
+                  {turmasEncerradasFiltradas.length} de {turmasEncerradas.length} turma(s)
+                </span>
+                {filtrosAtivos && (
+                  <button type="button" onClick={limparFiltros} className="font-medium text-blue-600 hover:text-blue-800">
+                    Limpar filtros
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {mostrarEncerradas && (
+            <div className="overflow-x-auto border-t border-slate-200">
+              <table className="w-full text-sm text-left min-w-[900px]">
+                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="px-5 py-3">Turma</th>
+                    <th className="px-5 py-3">Curso</th>
+                    <th className="px-5 py-3">Horário</th>
+                    <th className="px-5 py-3 text-center">Criada em</th>
+                    <th className="px-5 py-3 text-center">Encerrada em</th>
+                    <th className="px-5 py-3 text-center">Alunos</th>
+                    <th className="px-5 py-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {turmasEncerradasFiltradas.map((turma) => (
+                    <Fragment key={turma.id}>
+                    <tr className="hover:bg-slate-50">
+                      <td className="px-5 py-3 font-medium text-slate-900">{turma.nome}</td>
+                      <td className="px-5 py-3 text-slate-600">
+                        {(Array.isArray(turma.cursos) ? turma.cursos[0]?.titulo : turma.cursos?.titulo) || "Curso Indefinido"}
+                      </td>
+                      <td className="px-5 py-3 text-slate-600">
+                        {(turma.dias_semana || []).join(", ") || "—"}
+                        <br />
+                        <span className="text-xs text-slate-400">{getHorarioLabel(turma)}</span>
+                      </td>
+                      <td className="px-5 py-3 text-center text-slate-600">{formatarData(turma.criado_em)}</td>
+                      <td className="px-5 py-3 text-center text-slate-600">{formatarData(turma.data_encerramento)}</td>
+                      <td className="px-5 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setTurmaExpandida(turmaExpandida === turma.id ? null : turma.id)}
+                          className="inline-flex items-center justify-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full text-xs font-medium border border-slate-200"
+                          title="Ver alunos da turma"
+                        >
+                          <Users className="w-3 h-3" /> {vagasOcupadas[turma.id] || 0}
+                        </button>
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleReabrirTurma(turma)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md"
+                          title="Reabrir turma"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" /> Reabrir
+                        </button>
+                      </td>
+                    </tr>
+                    {turmaExpandida === turma.id && (
+                      <tr className="bg-slate-50/70">
+                        <td colSpan={7} className="px-5 py-4">
+                          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                            Alunos da turma {turma.nome}
+                          </p>
+                          <ListaAlunos
+                            alunos={alunosPorTurma[turma.id] || []}
+                            frequencia={freqPorTurma[turma.id]}
+                            onVerFrequencia={(a) =>
+                              a.aluno_id &&
+                              setAlunoFrequencia({ aluno_id: a.aluno_id, nome: a.nome, cpf: a.cpf, turmaId: turma.id })
+                            }
+                          />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
+                  ))}
+                  {turmasEncerradasFiltradas.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-5 py-10 text-center text-slate-500 bg-slate-50/50">
+                        {turmasEncerradas.length === 0 ? "Nenhuma turma encerrada ainda." : "Nenhuma turma encontrada com esses filtros."}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+              <p className="px-5 py-3 text-xs text-slate-500 border-t border-slate-200 bg-slate-50">
+                Clique em um aluno para ver a frequência dele. Os dados de cada turma ficam salvos separadamente, mesmo que o aluno entre em outras turmas depois.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {alunoFrequencia && (
+        <ModalFrequenciaAluno
+          aluno={alunoFrequencia}
+          turmaDestaqueId={alunoFrequencia.turmaId}
+          onClose={() => setAlunoFrequencia(null)}
+        />
+      )}
+
+      {/* MODAL CURSO */}
+      {isCursoModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="flex justify-between items-center p-4 border-b border-slate-200">
+              <h3 className="font-bold text-lg text-slate-900">{editingCurso?.id ? "Editar Curso" : "Novo Curso"}</h3>
+              <button onClick={() => setIsCursoModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+            </div>
+            <form onSubmit={handleSaveCurso} className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Título do Curso</label>
+                <input required type="text" value={editingCurso?.titulo || ""} onChange={e => setEditingCurso(prev => ({...prev, titulo: e.target.value}))} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"/>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Descrição</label>
+                <textarea rows={3} value={editingCurso?.descricao || ""} onChange={e => setEditingCurso(prev => ({...prev, descricao: e.target.value}))} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"/>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Carga Horária (horas)</label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  placeholder="Ex.: 20"
+                  value={editingCurso?.carga_horaria ?? ""}
+                  onChange={e => setEditingCurso(prev => ({...prev, carga_horaria: e.target.value === "" ? null : Math.max(1, parseInt(e.target.value, 10) || 1)}))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                />
+              </div>
+              <div className="pt-4 flex justify-end gap-2">
+                {editingCurso?.id && (
+                  <button type="button" onClick={() => handleDeleteCurso(editingCurso.id!)} className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md mr-auto">Excluir</button>
+                )}
+                <button type="button" onClick={() => setIsCursoModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md">Cancelar</button>
+                <button type="submit" disabled={isSaving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50">Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL TURMA */}
+      {isTurmaModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-4 border-b border-slate-200">
+              <h3 className="font-bold text-lg text-slate-900">{editingTurma?.id ? "Editar Turma" : "Nova Turma"}</h3>
+              <button onClick={() => setIsTurmaModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+            </div>
+            <form onSubmit={handleSaveTurma} className="p-4 space-y-5">
+              {editingTurma?.id && editingTurma.criado_em && (
+                <p className="text-xs text-slate-500">Turma criada em {formatarData(editingTurma.criado_em)}</p>
               )}
-            </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Curso Vinculado</label>
+                <select required value={editingTurma?.curso_id || ""} onChange={e => setEditingTurma(prev => ({...prev, curso_id: e.target.value}))} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                  <option value="" disabled>Selecione um curso</option>
+                  {cursos.map(c => <option key={c.id} value={c.id}>{c.titulo}</option>)}
+                </select>
+              </div>
 
-            {/* RODAPÉ */}
-            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 rounded-b-lg">
-              {!isEditing &&
-              selectedAluno ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleDeleteClick}
-                    disabled={!!salvandoDesistencia}
-                    className="bg-white border border-red-200 hover:bg-red-50 text-red-600 px-4 py-2 rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Excluir
-                  </button>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Nome/Identificador da Turma</label>
+                  <input required type="text" placeholder="Ex: Turma A" value={editingTurma?.nome || ""} onChange={e => setEditingTurma(prev => ({...prev, nome: e.target.value}))} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500 text-sm"/>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Quantidade de Vagas</label>
+                  <input
+                    required
+                    type="number"
+                    min="1"
+                    max={LIMITE_VAGAS}
+                    value={LIMITE_VAGAS}
+                    disabled
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-slate-100 text-slate-700 text-sm cursor-not-allowed"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Cada turma possui limite de 10 vagas.</p>
+                </div>
+              </div>
 
-                  <button
-                    type="button"
-                    onClick={startEditing}
-                    disabled={!!salvandoDesistencia || isLoadingMatriculas || !!erroMatriculas}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                    Editar Dados
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleDiscardClick}
-                    className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                    disabled={isSaving}
-                  >
-                    {isCreating
-                      ? "Cancelar"
-                      : "Descartar Alterações"}
-                  </button>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Professor(a)</label>
+                <select required value={editingTurma?.professor || ""} onChange={e => setEditingTurma(prev => ({...prev, professor: e.target.value}))} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                  <option value="" disabled>Selecione o professor</option>
+                  {PROFESSORES.map(nome => <option key={nome} value={nome}>{nome}</option>)}
+                </select>
+              </div>
 
-                  <button
-                    type="submit"
-                    form="edit-form"
-                    disabled={
-                      isSaving || !hasAge
-                    }
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-md text-sm font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Save className="w-4 h-4" />
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Turno</label>
+                <div className="flex gap-4">
+                  {TURNOS.map(t => (
+                    <label key={t} className={`flex-1 flex items-center justify-center gap-2 p-3 border rounded-md cursor-pointer transition-colors ${editingTurma?.turno === t ? 'border-emerald-500 bg-emerald-50 text-emerald-800 font-bold' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                      <input type="radio" name="turno" value={t} checked={editingTurma?.turno === t} onChange={() => alterarTurno(t)} className="hidden" />
+                      {t}
+                    </label>
+                  ))}
+                </div>
+              </div>
 
-                    {isSaving
-                      ? "Salvando..."
-                      : "Salvar"}
-                  </button>
-                </>
+              {editingTurma?.turno && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Horário</label>
+                  <select required value={editingTurma?.horario || ""} onChange={e => setEditingTurma(prev => ({...prev, horario: e.target.value}))} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                    {HORARIOS.filter(h => h.turno === editingTurma.turno).map(h => (
+                      <option key={h.label} value={h.label}>{h.label}</option>
+                    ))}
+                  </select>
+                </div>
               )}
-            </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Dias da Semana</label>
+                <div className="flex flex-wrap gap-2">
+                  {DIAS_SEMANA.map(dia => {
+                    const isSelected = (editingTurma?.dias_semana || []).includes(dia);
+                    return (
+                      <button key={dia} type="button" onClick={() => toggleDiaSemana(dia)} className={`px-3 py-1.5 text-sm font-medium border rounded-full transition-colors ${isSelected ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
+                        {dia}
+                      </button>
+                    )
+                  })}
+                </div>
+                {(!editingTurma?.dias_semana || editingTurma.dias_semana.length === 0) && (
+                  <p className="text-xs text-red-500 mt-2">Selecione ao menos um dia da semana.</p>
+                )}
+              </div>
+
+              {editingTurma?.id && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Alunos matriculados ({(alunosPorTurma[editingTurma.id] || []).length}/{LIMITE_VAGAS})
+                  </label>
+                  <div className="max-h-48 overflow-y-auto">
+                    <ListaAlunos
+                      alunos={alunosPorTurma[editingTurma.id] || []}
+                      onVerFrequencia={(a) =>
+                        a.aluno_id &&
+                        editingTurma.id &&
+                        setAlunoFrequencia({ aluno_id: a.aluno_id, nome: a.nome, cpf: a.cpf, turmaId: editingTurma.id })
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-4 flex justify-end gap-2 border-t border-slate-100">
+                {editingTurma?.id && (
+                  <div className="mr-auto flex flex-wrap gap-2">
+                    <button type="button" onClick={() => handleEncerrarTurma(editingTurma, true)} className="px-3 py-2 text-sm font-medium text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-md border border-amber-200">Encerrar e abrir nova</button>
+                    <button type="button" onClick={() => handleEncerrarTurma(editingTurma)} className="px-3 py-2 text-sm font-medium text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-md border border-amber-200">Encerrar turma</button>
+                    <button type="button" onClick={() => handleDeleteTurma(editingTurma.id!)} className="px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md">Excluir</button>
+                  </div>
+                )}
+                <button type="button" onClick={() => setIsTurmaModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md">Cancelar</button>
+                <button type="submit" disabled={isSaving || (editingTurma?.dias_semana?.length || 0) === 0} className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md disabled:opacity-50 flex items-center gap-2">
+                  <Save className="w-4 h-4"/> Salvar Turma
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* CONFIRMAÇÃO DE DESCARTE */}
-      {showDiscardConfirm && (
-        <div className="fixed inset-0 bg-slate-900/40 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 text-center transform transition-all">
-            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
-              <AlertCircle className="w-6 h-6" />
-            </div>
-
-            <h3 className="text-lg font-bold text-slate-900 mb-2">
-              {isCreating
-                ? "Cancelar cadastro?"
-                : "Descartar alterações?"}
-            </h3>
-
-            <p className="text-sm text-slate-500 mb-6">
-              Você tem modificações não salvas. Se sair agora, todos os dados digitados serão perdidos.
-            </p>
-
-            <div className="flex gap-3 justify-center">
-              <button
-                type="button"
-                onClick={cancelDiscard}
-                className="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-              >
-                Voltar
-              </button>
-
-              <button
-                type="button"
-                onClick={confirmDiscard}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
-              >
-                Sim, descartar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CONFIRMAÇÃO DE EXCLUSÃO */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-slate-900/40 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 text-center transform transition-all">
-            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
-              <Trash2 className="w-6 h-6" />
-            </div>
-
-            <h3 className="text-lg font-bold text-slate-900 mb-2">
-              Excluir aluno?
-            </h3>
-
-            <p className="text-sm text-slate-500 mb-6">
-              Tem certeza que deseja excluir os dados de{" "}
-              <strong>
-                {selectedAluno?.nome_completo}
-              </strong>
-              ? Esta ação não pode ser desfeita.
-            </p>
-
-            <div className="flex gap-3 justify-center">
-              <button
-                type="button"
-                onClick={() =>
-                  setShowDeleteConfirm(false)
-                }
-                className="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                disabled={isDeleting}
-              >
-                Cancelar
-              </button>
-
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
-                disabled={isDeleting}
-              >
-                {isDeleting
-                  ? "Excluindo..."
-                  : "Sim, excluir"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 }
