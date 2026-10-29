@@ -40,27 +40,33 @@ const PROFESSORES = [
   "Gustavo Bezerra Nonato",
 ];
 const TURNOS = ["Manhã", "Tarde"];
+// Horários disponíveis para novas turmas e exibidos na grade semanal.
 const HORARIOS = [
-  { turno: "Manhã", label: "08:30–09:30", inicio: "08:30", fim: "09:30" },
   { turno: "Manhã", label: "08:30–10:00", inicio: "08:30", fim: "10:00" },
-  { turno: "Manhã", label: "09:30–10:30", inicio: "09:30", fim: "10:30" },
   { turno: "Manhã", label: "10:00–11:30", inicio: "10:00", fim: "11:30" },
+  { turno: "Tarde", label: "14:30–16:00", inicio: "14:30", fim: "16:00" },
+  { turno: "Tarde", label: "16:00–17:30", inicio: "16:00", fim: "17:30" },
+] as const;
+
+// Horários descontinuados: não aparecem mais na grade nem para novas turmas,
+// mas continuam sendo reconhecidos para exibir corretamente as turmas encerradas.
+const HORARIOS_DESATIVADOS = [
+  { turno: "Manhã", label: "08:30–09:30", inicio: "08:30", fim: "09:30" },
+  { turno: "Manhã", label: "09:30–10:30", inicio: "09:30", fim: "10:30" },
   { turno: "Manhã", label: "10:30–11:30", inicio: "10:30", fim: "11:30" },
   { turno: "Tarde", label: "14:30–15:30", inicio: "14:30", fim: "15:30" },
-  { turno: "Tarde", label: "14:30–16:00", inicio: "14:30", fim: "16:00" },
   { turno: "Tarde", label: "15:30–16:30", inicio: "15:30", fim: "16:30" },
-  { turno: "Tarde", label: "16:00–17:30", inicio: "16:00", fim: "17:30" },
   { turno: "Tarde", label: "16:30–17:30", inicio: "16:30", fim: "17:30" },
 ] as const;
 
 function getHorarioByLabel(label: string) {
-  return HORARIOS.find((h) => h.label === label);
+  return [...HORARIOS, ...HORARIOS_DESATIVADOS].find((h) => h.label === label);
 }
 
 function getHorarioLabel(turma: Turma) {
   if (turma.horario) {
     const horarioSalvo = turma.horario.replace(/\s*[-–]\s*/g, "–");
-    const h = HORARIOS.find((h) => h.label === horarioSalvo);
+    const h = [...HORARIOS, ...HORARIOS_DESATIVADOS].find((h) => h.label === horarioSalvo);
     if (h) return h.label;
 
     // Mantém compatibilidade com horários antigos salvos no banco.
@@ -892,7 +898,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
         nome: "",
         curso_id: turma.curso_id,
         turno: turma.turno || "Manhã",
-        horario: turma.horario || "08:30–09:30",
+        horario: turma.horario && HORARIOS.some((h) => h.label === turma.horario) ? turma.horario : (turma.turno === "Tarde" ? "14:30–16:00" : "08:30–10:00"),
         professor: turma.professor || "",
         dias_semana: turma.dias_semana || [],
         vagas: LIMITE_VAGAS,
@@ -929,7 +935,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
   const alterarTurno = (turno: string) => {
     setEditingTurma(prev => {
       if (!prev) return prev;
-      const primeiroHorario = turno === "Manhã" ? "08:30–09:30" : "14:30–15:30";
+      const primeiroHorario = turno === "Manhã" ? "08:30–10:00" : "14:30–16:00";
       return { ...prev, turno, horario: primeiroHorario };
     });
   };
@@ -954,7 +960,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
               <Plus className="w-4 h-4" /> Novo Curso
             </button>
           ) : (
-            <button onClick={() => { setEditingTurma({ nome: "", curso_id: "", professor: "", turno: "Manhã", horario: "08:30–09:30", dias_semana: [], vagas: LIMITE_VAGAS }); setIsTurmaModalOpen(true); }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2">
+            <button onClick={() => { setEditingTurma({ nome: "", curso_id: "", professor: "", turno: "Manhã", horario: "08:30–10:00", dias_semana: [], vagas: LIMITE_VAGAS }); setIsTurmaModalOpen(true); }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2">
               <Plus className="w-4 h-4" /> Nova Turma
             </button>
           )}
@@ -1384,6 +1390,9 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                     {HORARIOS.filter(h => h.turno === editingTurma.turno).map(h => (
                       <option key={h.label} value={h.label}>{h.label}</option>
                     ))}
+                    {HORARIOS_DESATIVADOS.some(h => h.label === editingTurma.horario) && (
+                      <option value={editingTurma.horario} disabled>{editingTurma.horario} (horário desativado)</option>
+                    )}
                   </select>
                 </div>
               )}
