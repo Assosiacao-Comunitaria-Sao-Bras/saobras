@@ -65,7 +65,7 @@ export function AlunosOverview({ alunos, frequencias, erroFrequencia, limite, on
     });
   }, [alunos, busca, curso, turma, frequencias, limite]);
 
-  const contagens = { todos: base.length, frequente: 0, matriculado: 0, inativo: 0, desistente: 0 };
+  const contagens = { todos: base.length, frequente: 0, matriculado: 0, inativo: 0, desistente: 0, encerrado: 0 };
   base.forEach(({ situacao }) => { contagens[situacao.status]++; });
   const filtrados = base.filter(({ situacao }) => status === "todos" || situacao.status === status)
     .sort((a, b) => ordem === "recentes"
@@ -150,7 +150,7 @@ export function AlunosOverview({ alunos, frequencias, erroFrequencia, limite, on
       </div>
 
       <div aria-label="Filtrar por situação do aluno" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-        {(["todos", "frequente", "matriculado", "inativo", "desistente"] as const).map((valor) => (
+        {(["todos", "frequente", "matriculado", "inativo", "desistente", "encerrado"] as const).map((valor) => (
           <button type="button" key={valor} aria-pressed={status === valor} onClick={() => { setStatus(valor); setPagina(1); }} className={`rounded-xl border p-4 text-left transition-colors ${valor === "todos" ? "border-slate-200 bg-white text-slate-500" : STATUS_ALUNO[valor].cor} ${status === valor ? "ring-2 ring-current ring-offset-1" : "hover:shadow-sm"}`}>
             <span className="text-xs font-medium">{valor === "todos" ? "Todos os alunos" : STATUS_ALUNO[valor].label}</span>
             <span className="mt-1 block text-2xl font-bold text-slate-800">{contagens[valor]}</span>
