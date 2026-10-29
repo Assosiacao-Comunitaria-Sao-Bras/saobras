@@ -51,6 +51,8 @@ export type Matricula = {
   turma_id?: string | null;
   data_matricula?: string | null;
   desistiu_em?: string | null;
+  encerrada_em?: string | null;
+  motivo_encerramento?: string | null;
   turmas?: { nome: string } | { nome: string }[] | null;
   cursos?: {
     titulo: string;
@@ -91,6 +93,8 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
 
   // Estado de Matrículas
   const [matriculas, setMatriculas] = useState<Matricula[]>([]);
+  const matriculasAtivas = matriculas.filter((m) => !m.encerrada_em);
+  const matriculasEncerradas = matriculas.filter((m) => !!m.encerrada_em);
   const [isLoadingMatriculas, setIsLoadingMatriculas] = useState(false);
 
   // Cursos disponíveis
@@ -1226,7 +1230,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {matriculas.map(
+                        {matriculasAtivas.map(
                           (mat) => (
                             <div
                               key={mat.id}
@@ -1292,6 +1296,48 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                         )}
                       </div>
                     )}
+
+                  {!isLoadingMatriculas && !erroMatriculas && matriculas.length > 0 && matriculasAtivas.length === 0 && (
+                    <p className="mt-3 rounded-md border border-slate-100 bg-slate-50 p-3 text-center text-sm text-slate-500">
+                      Nenhuma matrícula ativa no momento.
+                    </p>
+                  )}
+
+                  {!isLoadingMatriculas && !erroMatriculas && matriculasEncerradas.length > 0 && (
+                    <details className="mt-6 rounded-md border border-slate-200 bg-slate-50">
+                      <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-slate-700">
+                        Matrículas encerradas ({matriculasEncerradas.length})
+                      </summary>
+                      <ul className="divide-y divide-slate-200 border-t border-slate-200">
+                        {matriculasEncerradas.map((mat) => {
+                          const curso = Array.isArray(mat.cursos) ? mat.cursos[0]?.titulo : mat.cursos?.titulo;
+                          const turma = Array.isArray(mat.turmas) ? mat.turmas[0]?.nome : mat.turmas?.nome;
+                          const dataBR = (v?: string | null) =>
+                            v ? new Date(v).toLocaleDateString("pt-BR", { timeZone: "America/Bahia" }) : "—";
+                          const registros = (frequencias.get(selectedAluno.id) ?? []).filter(
+                            (r) => r.turma_id === mat.turma_id && new Date(r.data_hora) <= new Date(mat.encerrada_em as string),
+                          );
+                          const final = calcularSituacaoAluno([{ ...mat, encerrada_em: null }], registros, limiteFrequencia);
+                          return (
+                            <li key={mat.id} className="px-4 py-3 text-sm">
+                              <p className="font-semibold text-slate-800">{curso || "Curso não especificado"}</p>
+                              <p className="text-xs text-slate-500">Turma: {turma || "Não informada"}</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {dataBR(mat.data_matricula)} até {dataBR(mat.encerrada_em)}
+                                {mat.motivo_encerramento === "turma_encerrada" ? " · turma encerrada" : ""}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-600">
+                                Frequência final:{" "}
+                                {final.percentual === null
+                                  ? "sem chamadas"
+                                  : `${Math.round(final.percentual)}% (${final.presentes} presenças, ${final.faltas} faltas)`}
+                              </p>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </details>
+                  )}
                   </div>
                 </>
               ) : (
