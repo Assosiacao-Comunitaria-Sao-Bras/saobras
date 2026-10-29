@@ -1,4 +1,4 @@
-export type StatusAluno = "frequente" | "matriculado" | "inativo" | "desistente";
+export type StatusAluno = "frequente" | "matriculado" | "inativo" | "desistente" | "encerrado";
 
 export type MatriculaSituacao = {
   id: string;
@@ -6,6 +6,8 @@ export type MatriculaSituacao = {
   turma_id?: string | null;
   data_matricula?: string | null;
   desistiu_em?: string | null;
+  encerrada_em?: string | null;
+  motivo_encerramento?: string | null;
 };
 
 export type RegistroFrequenciaAluno = {
@@ -22,6 +24,7 @@ export const STATUS_ALUNO: Record<StatusAluno, { label: string; cor: string }> =
   matriculado: { label: "Matriculado · não frequente", cor: "border-yellow-300 bg-yellow-50 text-yellow-800" },
   inativo: { label: "Cadastro inativo", cor: "border-slate-200 bg-slate-100 text-slate-600" },
   desistente: { label: "Desistiu do curso", cor: "border-red-200 bg-red-50 text-red-700" },
+  encerrado: { label: "Sem matrícula ativa · turma encerrada", cor: "border-indigo-200 bg-indigo-50 text-indigo-700" },
 };
 
 export function normalizarBusca(valor: string) {
@@ -51,8 +54,9 @@ export function calcularSituacaoAluno(
   limite = 30,
   agora = Date.now(),
 ) {
-  const ativas = matriculas.filter((matricula) => !matricula.desistiu_em);
+  const ativas = matriculas.filter((matricula) => !matricula.desistiu_em && !matricula.encerrada_em);
   const desistencias = matriculas.filter((matricula) => !!matricula.desistiu_em).length;
+  const encerradas = matriculas.filter((matricula) => !matricula.desistiu_em && !!matricula.encerrada_em).length;
   const inicios = new Map<string, string>();
   for (const matricula of ativas) {
     const chave = matricula.turma_id ? `turma:${matricula.turma_id}` : `curso:${matricula.curso_id}`;
@@ -86,8 +90,8 @@ export function calcularSituacaoAluno(
   ).length;
   const percentual = total ? (presentes / total) * 100 : null;
   const status: StatusAluno = !ativas.length
-    ? (desistencias ? "desistente" : "inativo")
+    ? (encerradas ? "encerrado" : desistencias ? "desistente" : "inativo")
     : percentual !== null && percentual >= limite ? "frequente" : "matriculado";
 
-  return { status, percentual, presentes, faltas: total - presentes, total, desistencias };
+  return { status, percentual, presentes, faltas: total - presentes, total, desistencias, encerradas };
 }
