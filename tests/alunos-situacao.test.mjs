@@ -86,3 +86,20 @@ test("índice mantém os dados por aluno e busca ignora acentos", () => {
   assert.equal(indice.get("a2").length, 1);
   assert.equal(normalizarBusca("  JOÃO Conceição "), "joao conceicao");
 });
+
+test("matrícula encerrada não conta frequência e não mantém o aluno matriculado", () => {
+  const encerrada = { ...matricula, encerrada_em: "2026-10-15T12:00:00Z", motivo_encerramento: "turma_encerrada" };
+  const situacao = calcular([encerrada], chamadas(5, 10));
+  assert.equal(situacao.status, "encerrado");
+  assert.equal(situacao.total, 0);
+  assert.equal(situacao.encerradas, 1);
+});
+
+test("com outra matrícula ativa, só a frequência da ativa é considerada", () => {
+  const encerrada = { ...matricula, id: "m0", turma_id: "t0", encerrada_em: "2026-10-15T12:00:00Z" };
+  const antigas = chamadas(1, 10).map((r) => ({ ...r, id: `old${r.id}`, turma_id: "t0" }));
+  const situacao = calcular([encerrada, matricula], [...antigas, ...chamadas(10, 10)]);
+  assert.equal(situacao.status, "frequente");
+  assert.equal(situacao.total, 10);
+  assert.equal(situacao.percentual, 100);
+});
