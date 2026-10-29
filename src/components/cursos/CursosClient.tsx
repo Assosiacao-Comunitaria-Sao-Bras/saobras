@@ -1390,7 +1390,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                     {HORARIOS.filter(h => h.turno === editingTurma.turno).map(h => (
                       <option key={h.label} value={h.label}>{h.label}</option>
                     ))}
-                    {HORARIOS_DESATIVADOS.some(h => h.label === editingTurma.horario) && (
+                    {editingTurma.horario && HORARIOS_DESATIVADOS.some(h => h.label === editingTurma.horario) && (
                       <option value={editingTurma.horario} disabled>{editingTurma.horario} (horário desativado)</option>
                     )}
                   </select>
