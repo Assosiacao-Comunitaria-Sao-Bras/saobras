@@ -24,6 +24,8 @@ type Matricula = {
   curso_id: string;
   turma_id: string;
   data_matricula: string;
+  encerrada_em?: string | null;
+  motivo_encerramento?: string | null;
   alunos?: {
     nome_completo: string;
     cpf: string | null;
@@ -86,6 +88,7 @@ export default function MatriculasClient({
     useState<Matricula[]>(matriculasIniciais);
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [aba, setAba] = useState<"ativas" | "encerradas">("ativas");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -355,26 +358,27 @@ export default function MatriculasClient({
     }
   };
 
+  const matriculasDaAba = useMemo(
+    () => matriculas.filter((m) => (aba === "ativas" ? !m.encerrada_em : !!m.encerrada_em)),
+    [matriculas, aba]
+  );
+  const totalAtivas = useMemo(() => matriculas.filter((m) => !m.encerrada_em).length, [matriculas]);
+  const totalEncerradas = matriculas.length - totalAtivas;
+
   const matriculasFiltradas = useMemo(() => {
     if (!searchTerm) {
-      return matriculas;
+      return matriculasDaAba;
     }
 
     const lower = searchTerm.toLowerCase();
 
-    return matriculas.filter(
+    return matriculasDaAba.filter(
       (m) =>
-        m.alunos?.nome_completo
-          .toLowerCase()
-          .includes(lower) ||
-        m.turmas?.nome
-          .toLowerCase()
-          .includes(lower) ||
-        m.cursos?.titulo
-          .toLowerCase()
-          .includes(lower)
+        m.alunos?.nome_completo.toLowerCase().includes(lower) ||
+        m.turmas?.nome.toLowerCase().includes(lower) ||
+        m.cursos?.titulo.toLowerCase().includes(lower)
     );
-  }, [matriculas, searchTerm]);
+  }, [matriculasDaAba, searchTerm]);
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -402,6 +406,25 @@ export default function MatriculasClient({
 
       {/* FILTRO E TABELA */}
       <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden flex flex-col">
+        <div className="flex gap-1 border-b border-slate-200 bg-white px-4 pt-3">
+          {([
+            ["ativas", `Ativas (${totalAtivas})`],
+            ["encerradas", `Encerradas (${totalEncerradas})`],
+          ] as const).map(([valor, rotulo]) => (
+            <button
+              key={valor}
+              type="button"
+              onClick={() => setAba(valor)}
+              className={`rounded-t-md px-4 py-2 text-sm font-semibold transition-colors ${
+                aba === valor
+                  ? "border-x border-t border-slate-200 bg-slate-50 text-blue-700"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              {rotulo}
+            </button>
+          ))}
+        </div>
         <div className="p-4 border-b border-slate-200 bg-slate-50">
           <div className="relative max-w-md">
             <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
