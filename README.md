@@ -33,6 +33,26 @@ node --experimental-strip-types --test tests/alunos-situacao.test.mjs
 
 Esse comando requer Node.js 22.6 ou superior.
 
+## Matrículas atuais e histórico
+
+Na página de matrículas, a aba **Ativas** exige aluno com
+`status_estudante = true`, turma com `status = ativa` e matrícula sem
+`encerrada_em` nem `desistiu_em`. A aba **Histórico** reúne todos os demais
+registros, inclusive quando a turma foi encerrada sem atualizar a matrícula.
+As contagens e a busca respeitam essa divisão. Relações ou status ausentes
+permanecem no histórico até que sua atividade possa ser confirmada.
+
+Encerrar uma matrícula nessa página preenche `encerrada_em`, preservando a
+matrícula e suas presenças. As fichas continuam disponíveis no histórico.
+Reabrir uma turma só traz de volta matrículas que ainda atendam aos demais
+critérios de atividade.
+
+Valide a classificação com:
+
+```bash
+node --experimental-strip-types --test --test-isolation=none tests/*.test.mjs
+```
+
 ## Getting Started
 
 First, run the development server:

@@ -10,10 +10,12 @@ export default async function MatriculasPage() {
     redirect("/login");
   }
 
-  const { data: matriculas } = await supabase
+  const { data: matriculas, error } = await supabase
     .from("matriculas")
-    .select("*, alunos(nome_completo, cpf), cursos(titulo), turmas(nome, horario)")
+    .select("*, alunos(nome_completo, cpf, status_estudante), cursos(titulo), turmas(nome, horario, status)")
     .order("data_matricula", { ascending: false });
+
+  if (error) throw new Error("Não foi possível carregar as matrículas: " + error.message);
 
   return <MatriculasClient matriculasIniciais={matriculas || []} />;
 }

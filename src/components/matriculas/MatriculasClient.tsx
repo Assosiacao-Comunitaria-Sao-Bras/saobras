@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { matriculaEstaAtiva } from "@/lib/matriculas-situacao";
 import { supabase } from "@/lib/supabase";
 import {
   baixarFichaAposMatricula,
@@ -8,7 +9,7 @@ import {
 } from "@/lib/ficha-inscricao";
 import {
   Plus,
-  Trash2,
+  Archive,
   Search,
   GraduationCap,
   X,
@@ -25,18 +26,21 @@ type Matricula = {
   turma_id: string;
   data_matricula: string;
   encerrada_em?: string | null;
+  desistiu_em?: string | null;
   motivo_encerramento?: string | null;
   alunos?: {
     nome_completo: string;
     cpf: string | null;
-  };
+    status_estudante: boolean | null;
+  } | null;
   cursos?: {
     titulo: string;
   };
   turmas?: {
     nome: string;
     horario: string | null;
-  };
+    status: string | null;
+  } | null;
 };
 
 type Aluno = {
@@ -80,7 +84,7 @@ function mascararCPF(cpf?: string | null) {
 export default function MatriculasClient({
   matriculasIniciais,
 }: {
-  matriculasIniciais: any[];
+  matriculasIniciais: Matricula[];
 }) {
   const router = useRouter();
 
@@ -88,7 +92,7 @@ export default function MatriculasClient({
     useState<Matricula[]>(matriculasIniciais);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [aba, setAba] = useState<"ativas" | "encerradas">("ativas");
+  const [aba, setAba] = useState<"ativas" | "historico">("ativas");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -337,10 +341,10 @@ export default function MatriculasClient({
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleEncerrar = async (id: string) => {
     if (
       !confirm(
-        "Tem certeza que deseja cancelar esta matrícula? O histórico de presenças pode ser afetado."
+        "Encerrar esta matrícula? Ela será movida para o histórico, preservando as presenças."
       )
     ) {
       return;
@@ -348,22 +352,22 @@ export default function MatriculasClient({
 
     const { error } = await supabase
       .from("matriculas")
-      .delete()
+      .update({ encerrada_em: new Date().toISOString() })
       .eq("id", id);
 
     if (error) {
-      alert("Erro ao excluir: " + error.message);
+      alert("Erro ao encerrar matrícula: " + error.message);
     } else {
       router.refresh();
     }
   };
 
   const matriculasDaAba = useMemo(
-    () => matriculas.filter((m) => (aba === "ativas" ? !m.encerrada_em : !!m.encerrada_em)),
+    () => matriculas.filter((m) => (aba === "ativas" ? matriculaEstaAtiva(m) : !matriculaEstaAtiva(m))),
     [matriculas, aba]
   );
-  const totalAtivas = useMemo(() => matriculas.filter((m) => !m.encerrada_em).length, [matriculas]);
-  const totalEncerradas = matriculas.length - totalAtivas;
+  const totalAtivas = useMemo(() => matriculas.filter(matriculaEstaAtiva).length, [matriculas]);
+  const totalHistorico = matriculas.length - totalAtivas;
 
   const matriculasFiltradas = useMemo(() => {
     if (!searchTerm) {
@@ -390,7 +394,7 @@ export default function MatriculasClient({
           </h1>
 
           <p className="text-sm text-slate-500 mt-1">
-            Vincule os alunos às turmas e cursos.
+            Matrículas atuais de alunos ativos em turmas ativas. Consulte as demais no histórico.
           </p>
         </div>
 
@@ -409,7 +413,7 @@ export default function MatriculasClient({
         <div className="flex gap-1 border-b border-slate-200 bg-white px-4 pt-3">
           {([
             ["ativas", `Ativas (${totalAtivas})`],
-            ["encerradas", `Encerradas (${totalEncerradas})`],
+            ["historico", `Histórico (${totalHistorico})`],
           ] as const).map(([valor, rotulo]) => (
             <button
               key={valor}
@@ -539,15 +543,15 @@ export default function MatriculasClient({
                           <FileDown className="w-4 h-4" />
                         )}
                       </button>
-                      <button
+                      {matriculaEstaAtiva(m) && <button
                         onClick={() =>
-                          handleDelete(m.id)
+                          handleEncerrar(m.id)
                         }
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
-                        title="Cancelar matrícula"
+                        title="Encerrar matrícula"
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        <Archive className="w-4 h-4" />
+                      </button>}
                     </td>
                   </tr>
                 ))
