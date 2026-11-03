@@ -19,7 +19,7 @@ import { baixarFichaAposMatricula, baixarFichaPorMatricula } from "@/lib/ficha-i
 import { useRouter } from "next/navigation";
 import { AlunosOverview, StatusAlunoBadge } from "./AlunosOverview";
 import { CampoLista } from "./CampoLista";
-import { formatarNome } from "@/lib/validacao";
+import { formatarNome, limitarEntradaCPF, cpfTemOnzeDigitos } from "@/lib/validacao";
 import { MUNICIPIOS, BAIRROS_FEIRA_DE_SANTANA, ehFeiraDeSantana } from "@/lib/localidades";
 import { calcularSituacaoAluno, indexarFrequencias, type RegistroFrequenciaAluno } from "@/lib/alunos-situacao";
 
@@ -355,6 +355,9 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
 
     setFormData({
       ...(selectedAluno || {}),
+      // Compatibilidade com CPFs antigos salvos com máscara, sem truncar.
+      cpf: selectedAluno?.cpf?.replace(/[.-]/g, "") || "",
+      cpf_responsavel: selectedAluno?.cpf_responsavel?.replace(/[.-]/g, "") || "",
       curso_id: matriculaAtual?.curso_id || "",
       turma_id: matriculaAtual?.turma_id || "",
     });
@@ -553,8 +556,8 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
       return;
     }
 
-    if (!formData.cpf?.trim()) {
-      alert("Informe o CPF do aluno.");
+    if (!cpfTemOnzeDigitos(formData.cpf)) {
+      alert("O CPF do aluno deve conter exatamente 11 números, sem letras ou símbolos.");
       return;
     }
 
@@ -569,11 +572,11 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
     }
 
     if (
-      formData.idade < 18 &&
-      !formData.cpf_responsavel?.trim()
+      (formData.idade < 18 || !!formData.cpf_responsavel) &&
+      !cpfTemOnzeDigitos(formData.cpf_responsavel)
     ) {
       alert(
-        "Informe o CPF do responsável para alunos menores de 18 anos."
+        "O CPF do responsável deve conter exatamente 11 números, sem letras ou símbolos."
       );
       return;
     }
@@ -869,9 +872,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
         field === "cpf" ||
         field === "cpf_responsavel"
       ) {
-        finalValue = value
-          .replace(/\D/g, "")
-          .slice(0, 11);
+        finalValue = limitarEntradaCPF(value);
       } else if (
         field === "telefone" ||
         field === "telefone_secundario"
@@ -892,6 +893,19 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
       ...prev,
       [field]: finalValue,
     }));
+  };
+
+  const handleColarCPF = (
+    field: "cpf" | "cpf_responsavel",
+    event: React.ClipboardEvent<HTMLInputElement>
+  ) => {
+    event.preventDefault();
+    const input = event.currentTarget;
+    const inicio = input.selectionStart ?? input.value.length;
+    const fim = input.selectionEnd ?? inicio;
+    // Limpa a máscara antes do limite nativo de caracteres do campo.
+    const digitos = limitarEntradaCPF(event.clipboardData.getData("text"));
+    handleInputChange(field, input.value.slice(0, inicio) + digitos + input.value.slice(fim));
   };
 
   /*
@@ -1424,9 +1438,14 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                           type="text"
                           required
                           disabled={!hasAge}
-                          value={formatCPF(
-                            formData.cpf || ""
-                          )}
+                          inputMode="numeric"
+                          minLength={11}
+                          maxLength={11}
+                          pattern="[0-9]{11}"
+                          title="Digite os 11 números do CPF, sem pontos ou traços."
+                          placeholder="11 números"
+                          value={formData.cpf || ""}
+                          onPaste={(e) => handleColarCPF("cpf", e)}
                           onChange={(e) =>
                             handleInputChange(
                               "cpf",
@@ -1439,7 +1458,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                     </div>
 
                     {/* RESPONSÁVEL */}
-                    {(isMinor || !hasAge) && (
+                    {(isMinor || !hasAge || !!formData.cpf_responsavel) && (
                       <div className="p-4 bg-orange-50 border border-orange-200 rounded-md space-y-4">
                         <h4 className="text-sm font-bold text-orange-800 flex items-center gap-2">
                           <AlertCircle className="w-4 h-4" />
@@ -1479,10 +1498,14 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                               type="text"
                               required={isMinor}
                               disabled={!hasAge}
-                              value={formatCPF(
-                                formData.cpf_responsavel ||
-                                  ""
-                              )}
+                              inputMode="numeric"
+                              minLength={11}
+                              maxLength={11}
+                              pattern="[0-9]{11}"
+                              title="Digite os 11 números do CPF, sem pontos ou traços."
+                              placeholder="11 números"
+                              value={formData.cpf_responsavel || ""}
+                              onPaste={(e) => handleColarCPF("cpf_responsavel", e)}
                               onChange={(e) =>
                                 handleInputChange(
                                   "cpf_responsavel",
