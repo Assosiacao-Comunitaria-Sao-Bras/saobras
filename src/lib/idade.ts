@@ -18,3 +18,11 @@ export function calcularIdade(nascimento?: string | null, hoje = hojeNaBahia()):
 export function idadeDoAluno(aluno: { data_nascimento?: string | null; idade?: number | null }, hoje = hojeNaBahia()): number | null {
   return aluno.data_nascimento ? calcularIdade(aluno.data_nascimento, hoje) : aluno.idade ?? null;
 }
+
+export function nascimentoVazio(valor?: string | null): boolean {
+  return !valor || valor === "--";
+}
+
+export function nascimentoPermiteSalvar(valor: string | null | undefined, obrigatorio: boolean, hoje = hojeNaBahia()): boolean {
+  return nascimentoVazio(valor) ? !obrigatorio : calcularIdade(valor, hoje) !== null;
+}

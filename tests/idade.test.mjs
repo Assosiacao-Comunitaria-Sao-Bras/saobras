@@ -1,6 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { calcularIdade, hojeNaBahia, idadeDoAluno } from "../src/lib/idade.ts";
+import { calcularIdade, hojeNaBahia, idadeDoAluno, nascimentoPermiteSalvar } from "../src/lib/idade.ts";
+
+test("edição legada aceita nascimento pendente; cadastro novo continua exigindo", () => {
+  for (const valor of [null, undefined, "", "--"]) {
+    assert.equal(nascimentoPermiteSalvar(valor, false), true);
+    assert.equal(nascimentoPermiteSalvar(valor, true), false);
+  }
+});
+
+test("nascimento opcional não permite gravar data parcial, impossível ou futura", () => {
+  for (const valor of ["2010--", "-02-01", "2010-02-30", "2027-01-01"]) {
+    assert.equal(nascimentoPermiteSalvar(valor, false, "2026-11-05"), false);
+  }
+  assert.equal(nascimentoPermiteSalvar("2010-02-01", false, "2026-11-05"), true);
+});
 
 test("idade muda somente no aniversário, incluindo a maioridade", () => {
   assert.equal(calcularIdade("2008-11-05", "2026-11-04"), 17);

@@ -21,7 +21,7 @@ import { AlunosOverview, StatusAlunoBadge } from "./AlunosOverview";
 import { CampoNascimento } from "./CampoNascimento";
 import { CampoLista } from "./CampoLista";
 import { formatarNome, limitarEntradaCPF, cpfTemOnzeDigitos } from "@/lib/validacao";
-import { calcularIdade, idadeDoAluno } from "@/lib/idade";
+import { calcularIdade, idadeDoAluno, nascimentoVazio, nascimentoPermiteSalvar } from "@/lib/idade";
 import { MUNICIPIOS, BAIRROS_FEIRA_DE_SANTANA, ehFeiraDeSantana } from "@/lib/localidades";
 import { calcularSituacaoAluno, indexarFrequencias, type RegistroFrequenciaAluno } from "@/lib/alunos-situacao";
 
@@ -550,7 +550,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
     }
 
     const idadeCalculada = calcularIdade(formData.data_nascimento);
-    if (idadeCalculada === null) {
+    if (!nascimentoPermiteSalvar(formData.data_nascimento, nascimentoObrigatorio)) {
       alert("Informe uma data de nascimento válida, que não esteja no futuro.");
       return;
     }
@@ -566,7 +566,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
     }
 
     if (
-      idadeCalculada < 18 &&
+      isMinor &&
       !formData.nome_responsavel?.trim()
     ) {
       alert(
@@ -576,7 +576,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
     }
 
     if (
-      (idadeCalculada < 18 || !!formData.cpf_responsavel) &&
+      (isMinor || !!formData.cpf_responsavel) &&
       !cpfTemOnzeDigitos(formData.cpf_responsavel)
     ) {
       alert(
@@ -599,7 +599,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
         telefone_secundario:
           formData.telefone_secundario,
         email: formData.email,
-        data_nascimento: formData.data_nascimento,
+        ...(idadeCalculada !== null ? { data_nascimento: formData.data_nascimento } : {}),
         // Mantém a idade legada dos cadastros existentes.
         ...(!selectedAluno ? { idade: idadeCalculada } : {}),
         nome_responsavel: formData.nome_responsavel
@@ -956,8 +956,16 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
    */
 
   const idadeCalculada = calcularIdade(formData.data_nascimento);
-  const hasAge = idadeCalculada !== null;
-  const isMinor = idadeCalculada !== null && idadeCalculada < 18;
+  const vinculoAtual = matriculas[0];
+  const mudouVinculo = !!formData.curso_id && !!formData.turma_id && (
+    !vinculoAtual || vinculoAtual.curso_id !== formData.curso_id ||
+    (vinculoAtual.turma_id || "") !== formData.turma_id
+  );
+  const nascimentoObrigatorio = isCreating || !!selectedAluno?.data_nascimento || mudouVinculo;
+  const nascimentoPendente = !isCreating && !selectedAluno?.data_nascimento && nascimentoVazio(formData.data_nascimento);
+  const hasAge = idadeCalculada !== null || !isCreating;
+  const idadeReferencia = nascimentoVazio(formData.data_nascimento) ? selectedAluno?.idade : idadeCalculada;
+  const isMinor = idadeReferencia != null && idadeReferencia < 18;
   const idadeSelecionada = selectedAluno ? idadeDoAluno(selectedAluno) : null;
 
   /*
@@ -1368,12 +1376,13 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                   {/* NASCIMENTO */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <CampoNascimento id="nascimento-cadastro"
+                      <CampoNascimento id="nascimento-cadastro" required={nascimentoObrigatorio}
                         value={formData.data_nascimento || ""}
                         onChange={(valor) => handleInputChange("data_nascimento", valor)} />
                     </div>
 
-                    {hasAge && <p className="text-sm text-slate-600">Idade calculada: {idadeCalculada} anos</p>}
+                    {idadeCalculada !== null && <p className="text-sm text-slate-600">Idade calculada: {idadeCalculada} anos</p>}
+                    {nascimentoPendente && <p className="text-sm text-slate-600">Nascimento pendente. Você pode editar os demais dados e informar o nascimento depois. A idade anteriormente informada será preservada.</p>}
                     {!hasAge && (
                       <div className="flex items-center text-sm text-slate-500 mt-4 md:mt-0">
                         * Preencha o ano, mês e dia de nascimento para continuar.

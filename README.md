@@ -97,7 +97,10 @@ adiciona `alunos.data_nascimento` como `date` opcional, rejeita datas futuras e
 não altera a coluna `idade`, seus valores, registros existentes ou políticas RLS.
 A chave pública usada pela aplicação não permite executar essa migração.
 
-Novos cadastros, edição de cadastro e novas matrículas exigem nascimento válido.
+Novos cadastros e novas matrículas exigem nascimento válido. Na edição de
+cadastros legados, o nascimento pode continuar pendente e a idade antiga é
+preservada. Se a data for preenchida, precisa ser completa e válida; datas já
+confirmadas não podem ser apagadas. Alterar o vínculo de curso/turma exige nascimento.
 A idade é calculada no fuso America/Bahia; dados de responsável são obrigatórios
 para menores de 18 anos. A matrícula de um aluno legado permite informar seu
 nascimento, mas, se faltar responsável, orienta completar o cadastro primeiro.
