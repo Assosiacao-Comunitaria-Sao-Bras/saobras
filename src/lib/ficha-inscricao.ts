@@ -17,7 +17,7 @@ import {
 
 const SELECT_BASE =
   "id, data_matricula, " +
-  "alunos(nome_completo, cpf, idade, telefone, telefone_secundario, email, bairro, nome_responsavel, cpf_responsavel), " +
+  "alunos(nome_completo, cpf, idade, data_nascimento, telefone, telefone_secundario, email, bairro, nome_responsavel, cpf_responsavel), " +
   "cursos(titulo), ";
 
 const SELECT_MATRICULA = SELECT_BASE + "turmas(nome, turno, horario, dias_semana, professor)";

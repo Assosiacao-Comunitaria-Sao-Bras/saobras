@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { calcularIdade, hojeNaBahia } from "@/lib/idade";
+import { cpfTemOnzeDigitos } from "@/lib/validacao";
 import { matriculaEstaAtiva } from "@/lib/matriculas-situacao";
 import { supabase } from "@/lib/supabase";
 import {
@@ -44,6 +46,9 @@ type Matricula = {
 };
 
 type Aluno = {
+  data_nascimento: string | null;
+  nome_responsavel: string | null;
+  cpf_responsavel: string | null;
   id: string;
   nome_completo: string;
   cpf: string | null;
@@ -108,6 +113,7 @@ export default function MatriculasClient({
 
   // Form states
   const [selectedAluno, setSelectedAluno] = useState("");
+  const [dataNascimento, setDataNascimento] = useState("");
 
   const [selectedTurma, setSelectedTurma] = useState("");
 
@@ -123,6 +129,7 @@ export default function MatriculasClient({
     setIsModalOpen(true);
 
     setSelectedAluno("");
+    setDataNascimento("");
 
     setSelectedTurma("");
 
@@ -136,7 +143,7 @@ export default function MatriculasClient({
       const [resAlunos, resTurmas] = await Promise.all([
         supabase
           .from("alunos")
-          .select("id, nome_completo, cpf")
+          .select("id, nome_completo, cpf, data_nascimento, nome_responsavel, cpf_responsavel")
           .order("nome_completo"),
 
         supabase
@@ -147,6 +154,10 @@ export default function MatriculasClient({
           .eq("status", "ativa")
           .order("nome"),
       ]);
+
+      if (resAlunos.error || resTurmas.error) {
+        alert("Não foi possível carregar os dados: " + (resAlunos.error?.message || resTurmas.error?.message));
+      }
 
       if (resAlunos.data) {
         setAlunos(resAlunos.data);
@@ -234,6 +245,17 @@ export default function MatriculasClient({
       return;
     }
 
+    const idade = calcularIdade(dataNascimento);
+    const aluno = alunos.find((a) => a.id === selectedAluno);
+    if (idade === null || !aluno) {
+      alert("Informe uma data de nascimento válida para o aluno.");
+      return;
+    }
+    if (idade < 18 && (!aluno.nome_responsavel?.trim() || !cpfTemOnzeDigitos(aluno.cpf_responsavel?.replace(/[.-]/g, "")))) {
+      alert("Atualize o nome e o CPF do responsável no cadastro do aluno antes de matricular um menor de 18 anos.");
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -286,6 +308,13 @@ export default function MatriculasClient({
         setIsSaving(false);
 
         return;
+      }
+
+      if (aluno.data_nascimento !== dataNascimento) {
+        const { error: erroNascimento } = await supabase.from("alunos")
+          .update({ data_nascimento: dataNascimento }).eq("id", selectedAluno).select("id").single();
+        if (erroNascimento) throw erroNascimento;
+        setAlunos((lista) => lista.map((a) => a.id === selectedAluno ? { ...a, data_nascimento: dataNascimento } : a));
       }
 
       const { error } = await supabase
@@ -639,11 +668,10 @@ export default function MatriculasClient({
                                     selectedAluno ===
                                     a.id
                                   }
-                                  onChange={() =>
-                                    setSelectedAluno(
-                                      a.id
-                                    )
-                                  }
+                                  onChange={() => {
+                                    setSelectedAluno(a.id);
+                                    setDataNascimento(a.data_nascimento || "");
+                                  }}
                                   className="w-4 h-4 text-blue-600"
                                 />
 
@@ -663,6 +691,18 @@ export default function MatriculasClient({
                         )}
                       </div>
                     </div>
+
+                    {selectedAluno && (
+                      <div className="space-y-2">
+                        <label htmlFor="nascimento-matricula" className="block text-sm font-bold text-slate-700">Data de nascimento do aluno</label>
+                        <input id="nascimento-matricula" type="date" required min="0001-01-01" max={hojeNaBahia()}
+                          value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-md" />
+                        <p className="text-sm text-slate-500">{calcularIdade(dataNascimento) !== null
+                          ? `Idade calculada: ${calcularIdade(dataNascimento)} anos`
+                          : "Confirme a data de nascimento para realizar a matrícula."}</p>
+                      </div>
+                    )}
 
                     {/* TURMA SELECT */}
                     <div className="space-y-2">
@@ -761,7 +801,8 @@ export default function MatriculasClient({
                     isSaving ||
                     isLoadingFormDados ||
                     !selectedAluno ||
-                    !selectedTurma
+                    !selectedTurma ||
+                    calcularIdade(dataNascimento) === null
                   }
                   className="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >

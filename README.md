@@ -87,3 +87,29 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Data de nascimento
+
+Antes de disponibilizar esta versão, execute
+`supabase/migrations/202611050001_alunos_data_nascimento.sql` no SQL Editor do
+Supabase, com acesso de administrador. A migração é transacional e repetível:
+adiciona `alunos.data_nascimento` como `date` opcional, rejeita datas futuras e
+não altera a coluna `idade`, seus valores, registros existentes ou políticas RLS.
+A chave pública usada pela aplicação não permite executar essa migração.
+
+Novos cadastros, edição de cadastro e novas matrículas exigem nascimento válido.
+A idade é calculada no fuso America/Bahia; dados de responsável são obrigatórios
+para menores de 18 anos. A matrícula de um aluno legado permite informar seu
+nascimento, mas, se faltar responsável, orienta completar o cadastro primeiro.
+O nascimento é salvo no aluno antes de inserir a matrícula; se esta falhar, a
+correção do nascimento permanece salva e a matrícula pode ser tentada novamente.
+
+Cadastros antigos continuam consultáveis com a idade informada e a indicação de
+nascimento pendente. Nenhuma data é inferida. Com nascimento confirmado, cadastro
+e ficha PDF calculam a idade a partir dele. A idade legada não é sobrescrita;
+em novos cadastros é preenchida automaticamente como referência inicial de
+compatibilidade. Aniversários de 29/02 são considerados em 01/03 em anos comuns.
+
+Execute `node --experimental-strip-types --test --test-isolation=none tests/*.test.mjs`
+para validar as regras, inclusive aniversário, maioridade, datas impossíveis,
+ano bissexto, fuso horário e preservação da idade legada.

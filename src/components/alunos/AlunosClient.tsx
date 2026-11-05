@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation";
 import { AlunosOverview, StatusAlunoBadge } from "./AlunosOverview";
 import { CampoLista } from "./CampoLista";
 import { formatarNome, limitarEntradaCPF, cpfTemOnzeDigitos } from "@/lib/validacao";
+import { calcularIdade, hojeNaBahia, idadeDoAluno } from "@/lib/idade";
 import { MUNICIPIOS, BAIRROS_FEIRA_DE_SANTANA, ehFeiraDeSantana } from "@/lib/localidades";
 import { calcularSituacaoAluno, indexarFrequencias, type RegistroFrequenciaAluno } from "@/lib/alunos-situacao";
 
@@ -33,6 +34,7 @@ export type Aluno = {
   telefone_secundario?: string | null;
   email: string | null;
   idade: number | null;
+  data_nascimento?: string | null;
   status_estudante: boolean | null;
   bairro: string | null;
   municipio: string | null;
@@ -330,7 +332,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
     setFormData({
       status_estudante: true,
       nis: false,
-      idade: undefined,
+      data_nascimento: "",
       curso_id: "",
       turma_id: "",
       tags_perfil: [],
@@ -546,8 +548,9 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
       return;
     }
 
-    if (!formData.idade) {
-      alert("Informe a idade do aluno.");
+    const idadeCalculada = calcularIdade(formData.data_nascimento);
+    if (idadeCalculada === null) {
+      alert("Informe uma data de nascimento válida, que não esteja no futuro.");
       return;
     }
 
@@ -562,7 +565,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
     }
 
     if (
-      formData.idade < 18 &&
+      idadeCalculada < 18 &&
       !formData.nome_responsavel?.trim()
     ) {
       alert(
@@ -572,7 +575,7 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
     }
 
     if (
-      (formData.idade < 18 || !!formData.cpf_responsavel) &&
+      (idadeCalculada < 18 || !!formData.cpf_responsavel) &&
       !cpfTemOnzeDigitos(formData.cpf_responsavel)
     ) {
       alert(
@@ -595,7 +598,9 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
         telefone_secundario:
           formData.telefone_secundario,
         email: formData.email,
-        idade: formData.idade,
+        data_nascimento: formData.data_nascimento,
+        // Mantém a idade legada dos cadastros existentes.
+        ...(!selectedAluno ? { idade: idadeCalculada } : {}),
         nome_responsavel: formData.nome_responsavel
           ? formatarNome(formData.nome_responsavel)
           : formData.nome_responsavel,
@@ -949,14 +954,10 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
    * ============================================================
    */
 
-  const hasAge =
-    formData.idade !== null &&
-    formData.idade !== undefined &&
-    !isNaN(formData.idade);
-
-  const isMinor =
-    hasAge &&
-    formData.idade! < 18;
+  const idadeCalculada = calcularIdade(formData.data_nascimento);
+  const hasAge = idadeCalculada !== null;
+  const isMinor = idadeCalculada !== null && idadeCalculada < 18;
+  const idadeSelecionada = selectedAluno ? idadeDoAluno(selectedAluno) : null;
 
   /*
    * ============================================================
@@ -1129,10 +1130,13 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                           </p>
 
                           <p className="text-sm font-medium text-slate-900">
-                            {selectedAluno.idade
-                              ? `${selectedAluno.idade} anos`
+                            {idadeSelecionada !== null
+                              ? `${idadeSelecionada} anos${selectedAluno.data_nascimento ? "" : " (idade informada; nascimento pendente)"}`
                               : "-"}
                           </p>
+                          {selectedAluno.data_nascimento && <p className="text-xs text-slate-500 mt-1">
+                            Nascimento: {selectedAluno.data_nascimento.split("-").reverse().join("/")}
+                          </p>}
                         </div>
 
                         <div>
@@ -1149,8 +1153,8 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                           </p>
                         </div>
 
-                        {selectedAluno.idade !== null &&
-                          selectedAluno.idade < 18 && (
+                        {idadeSelecionada !== null &&
+                          idadeSelecionada < 18 && (
                             <div className="pt-3 mt-3 border-t border-slate-200">
                               <p className="text-xs font-bold text-orange-600 mb-2">
                                 Dados do Responsável
@@ -1364,34 +1368,24 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-bold text-slate-700 mb-1">
-                        Qual a idade do aluno?
+                        Data de nascimento do aluno
                       </label>
 
                       <input
-                        type="number"
+                        type="date"
                         required
-                        min="1"
-                        placeholder="Ex: 15"
-                        value={
-                          formData.idade || ""
-                        }
-                        onChange={(e) =>
-                          handleInputChange(
-                            "idade",
-                            e.target.value
-                              ? parseInt(
-                                  e.target.value
-                                )
-                              : null
-                          )
-                        }
+                        min="0001-01-01"
+                        max={hojeNaBahia()}
+                        value={formData.data_nascimento || ""}
+                        onChange={(e) => handleInputChange("data_nascimento", e.target.value)}
                         className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors"
                       />
                     </div>
 
+                    {hasAge && <p className="text-sm text-slate-600">Idade calculada: {idadeCalculada} anos</p>}
                     {!hasAge && (
                       <div className="flex items-center text-sm text-slate-500 mt-4 md:mt-0">
-                        * Informe a idade primeiro para preencher o resto dos dados.
+                        * Informe uma data de nascimento válida para preencher o resto dos dados.
                       </div>
                     )}
                   </div>

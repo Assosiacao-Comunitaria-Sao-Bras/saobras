@@ -1,3 +1,4 @@
+import { idadeDoAluno } from "./idade";
 import type { jsPDF } from "jspdf";
 
 /*
@@ -20,6 +21,7 @@ export type DadosFichaInscricao = {
     nome_completo: string;
     cpf?: string | null;
     idade?: number | null;
+    data_nascimento?: string | null;
     telefone?: string | null;
     telefone_secundario?: string | null;
     email?: string | null;
@@ -100,7 +102,7 @@ export function partesDataBahia(valor: string | Date) {
 
 /** Aluno com 18 anos ou mais (idade não informada conta como menor). */
 export function alunoMaiorDeIdade(dados: DadosFichaInscricao) {
-  const idade = dados.aluno.idade;
+  const idade = idadeDoAluno(dados.aluno);
   return typeof idade === "number" && idade >= 18;
 }
 
@@ -252,7 +254,7 @@ export function desenharFicha(doc: Doc, dados: DadosFichaInscricao, logos: Logos
   y += 9;
   linhaDeCelulas(y, [
     { rotulo: "Nome completo", valor: aluno.nome_completo, peso: 4.2 },
-    { rotulo: "Idade", valor: aluno.idade ? `${aluno.idade} anos` : "", peso: 1 },
+    { rotulo: "Idade", valor: idadeDoAluno(aluno) !== null ? `${idadeDoAluno(aluno)} anos` : "", peso: 1 },
   ]);
   y += PASSO;
   linhaDeCelulas(y, [
