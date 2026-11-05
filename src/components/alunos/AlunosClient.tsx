@@ -18,9 +18,10 @@ import { supabase } from "@/lib/supabase";
 import { baixarFichaAposMatricula, baixarFichaPorMatricula } from "@/lib/ficha-inscricao";
 import { useRouter } from "next/navigation";
 import { AlunosOverview, StatusAlunoBadge } from "./AlunosOverview";
+import { CampoNascimento } from "./CampoNascimento";
 import { CampoLista } from "./CampoLista";
 import { formatarNome, limitarEntradaCPF, cpfTemOnzeDigitos } from "@/lib/validacao";
-import { calcularIdade, hojeNaBahia, idadeDoAluno } from "@/lib/idade";
+import { calcularIdade, idadeDoAluno } from "@/lib/idade";
 import { MUNICIPIOS, BAIRROS_FEIRA_DE_SANTANA, ehFeiraDeSantana } from "@/lib/localidades";
 import { calcularSituacaoAluno, indexarFrequencias, type RegistroFrequenciaAluno } from "@/lib/alunos-situacao";
 
@@ -1364,28 +1365,18 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                   onSubmit={handleSave}
                   className="space-y-6"
                 >
-                  {/* IDADE */}
+                  {/* NASCIMENTO */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-1">
-                        Data de nascimento do aluno
-                      </label>
-
-                      <input
-                        type="date"
-                        required
-                        min="0001-01-01"
-                        max={hojeNaBahia()}
+                      <CampoNascimento id="nascimento-cadastro"
                         value={formData.data_nascimento || ""}
-                        onChange={(e) => handleInputChange("data_nascimento", e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors"
-                      />
+                        onChange={(valor) => handleInputChange("data_nascimento", valor)} />
                     </div>
 
                     {hasAge && <p className="text-sm text-slate-600">Idade calculada: {idadeCalculada} anos</p>}
                     {!hasAge && (
                       <div className="flex items-center text-sm text-slate-500 mt-4 md:mt-0">
-                        * Informe uma data de nascimento válida para preencher o resto dos dados.
+                        * Preencha o ano, mês e dia de nascimento para continuar.
                       </div>
                     )}
                   </div>

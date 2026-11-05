@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { calcularIdade, hojeNaBahia } from "@/lib/idade";
+import { calcularIdade } from "@/lib/idade";
+import { CampoNascimento } from "@/components/alunos/CampoNascimento";
 import { cpfTemOnzeDigitos } from "@/lib/validacao";
 import { matriculaEstaAtiva } from "@/lib/matriculas-situacao";
 import { supabase } from "@/lib/supabase";
@@ -694,10 +695,7 @@ export default function MatriculasClient({
 
                     {selectedAluno && (
                       <div className="space-y-2">
-                        <label htmlFor="nascimento-matricula" className="block text-sm font-bold text-slate-700">Data de nascimento do aluno</label>
-                        <input id="nascimento-matricula" type="date" required min="0001-01-01" max={hojeNaBahia()}
-                          value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-md" />
+                        <CampoNascimento id="nascimento-matricula" value={dataNascimento} onChange={setDataNascimento} />
                         <p className="text-sm text-slate-500">{calcularIdade(dataNascimento) !== null
                           ? `Idade calculada: ${calcularIdade(dataNascimento)} anos`
                           : "Confirme a data de nascimento para realizar a matrícula."}</p>
