@@ -21,7 +21,7 @@ export function CampoNascimento({ id, value, onChange, required = true }: {
       <legend className="text-sm font-bold text-slate-700">Nascimento do aluno</legend>
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label htmlFor={`${id}-ano`} className="block text-sm font-medium mb-1">Ano de nascimento</label>
+          <label htmlFor={`${id}-ano`} className="block text-sm font-medium mb-1">Ano</label>
           <input id={`${id}-ano`} type="text" inputMode="numeric" required={required}
             minLength={4} maxLength={4} pattern="[0-9]{4}" placeholder="Ex.: 2010"
             title={`Informe o ano de nascimento, até ${hojeNaBahia().slice(0, 4)}.`}
