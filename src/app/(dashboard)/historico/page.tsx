@@ -24,7 +24,7 @@ export default async function HistoricoPage() {
     supabase
       .from("turmas")
       .select(
-        "id, nome, curso_id, horario, turno, vagas, cursos(titulo)"
+        "id, nome, curso_id, horario, turno, vagas, status, data_hora_inicio, dias_semana, cursos(titulo)"
       )
       .order("nome"),
   ]);
