@@ -21,8 +21,11 @@ import {
   School,
   AlertTriangle,
   BarChart3,
+  ChevronDown,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { turmaEstaNaGrade } from "@/lib/grade-semanal";
+import { motivoMatriculaInativa } from "@/lib/matriculas-situacao";
 
 type Curso = {
   id: string;
@@ -36,6 +39,9 @@ type Turma = {
   horario?: string | null;
   turno?: string | null;
   vagas?: number | null;
+  status?: string | null;
+  data_hora_inicio?: string | null;
+  dias_semana?: string[] | null;
   cursos?: { titulo: string } | { titulo: string }[] | null;
 };
 
@@ -51,7 +57,16 @@ type Matricula = {
   curso_id: string;
   turma_id: string;
   data_matricula?: string | null;
-  alunos?: { nome_completo: string }[] | null;
+  encerrada_em?: string | null;
+  desistiu_em?: string | null;
+  alunos?:
+    | { nome_completo: string; status_estudante?: boolean | null }
+    | { nome_completo: string; status_estudante?: boolean | null }[]
+    | null;
+  turmas?:
+    | { status?: string | null }
+    | { status?: string | null }[]
+    | null;
 };
 
 type PresencaRegistro = {
@@ -241,6 +256,15 @@ export default function HistoricoClient({
   const [abaHorario, setAbaHorario] =
     useState("todos");
 
+  const [matriculasAbertas, setMatriculasAbertas] =
+    useState(false);
+
+  const [cursosAbertos, setCursosAbertos] =
+    useState(false);
+
+  const [abaCursos, setAbaCursos] =
+    useState<"ativos" | "inativos">("ativos");
+
   async function carregarDados() {
     setCarregando(true);
 
@@ -259,7 +283,7 @@ export default function HistoricoClient({
         supabase
           .from("matriculas")
           .select(
-            "id, aluno_id, curso_id, turma_id, data_matricula, alunos(nome_completo)"
+            "id, aluno_id, curso_id, turma_id, data_matricula, encerrada_em, desistiu_em, alunos(nome_completo, status_estudante), turmas(status)"
           ),
 
         supabase
@@ -889,6 +913,122 @@ export default function HistoricoClient({
     ).length;
 
   /*
+   * MATRÍCULAS ATIVAS X INATIVAS
+   * Mesma regra da página de Matrículas: ativa = sem encerramento,
+   * sem desistência, aluno ativo e turma ativa.
+   */
+  const resumoMatriculas =
+    useMemo(() => {
+      const motivos = {
+        encerrada: 0,
+        desistencia: 0,
+        turma_encerrada: 0,
+        aluno_inativo: 0,
+      };
+
+      let ativas = 0;
+
+      matriculas.forEach(
+        (matricula) => {
+          const motivo =
+            motivoMatriculaInativa({
+              encerrada_em:
+                matricula.encerrada_em,
+              desistiu_em:
+                matricula.desistiu_em,
+              alunos: pegarRelacao(
+                matricula.alunos
+              ),
+              turmas: pegarRelacao(
+                matricula.turmas
+              ),
+            });
+
+          if (motivo) {
+            motivos[motivo]++;
+          } else {
+            ativas++;
+          }
+        }
+      );
+
+      return {
+        ativas,
+        inativas:
+          matriculas.length - ativas,
+        motivos,
+      };
+    }, [matriculas]);
+
+  /*
+   * TURMAS E CURSOS DA GRADE SEMANAL
+   * Só conta o que aparece na grade semanal de Cursos e Turmas.
+   */
+  const turmasNaGrade =
+    useMemo(
+      () =>
+        turmas.filter(
+          turmaEstaNaGrade
+        ),
+      [turmas]
+    );
+
+  const turmasNaGradeLotadas =
+    useMemo(() => {
+      const ids = new Set(
+        turmasNaGrade.map(
+          (turma) => turma.id
+        )
+      );
+
+      return resumoTurmas.filter(
+        (turma) =>
+          ids.has(turma.id) &&
+          turma.vagas > 0 &&
+          turma.alunos >=
+            turma.vagas
+      ).length;
+    }, [turmasNaGrade, resumoTurmas]);
+
+  const cursosPorGrade =
+    useMemo(() => {
+      const contagem = new Map<
+        string,
+        number
+      >();
+
+      turmasNaGrade.forEach(
+        (turma) => {
+          contagem.set(
+            turma.curso_id,
+            (contagem.get(
+              turma.curso_id
+            ) || 0) + 1
+          );
+        }
+      );
+
+      return {
+        ativos: cursos
+          .filter((curso) =>
+            contagem.has(curso.id)
+          )
+          .map((curso) => ({
+            id: curso.id,
+            titulo: curso.titulo,
+            turmas:
+              contagem.get(
+                curso.id
+              ) || 0,
+          })),
+        inativos: cursos.filter(
+          (curso) =>
+            !contagem.has(curso.id)
+        ),
+      };
+    }, [cursos, turmasNaGrade]);
+
+  /*
    * LIMPAR FILTROS
    */
   function limparFiltros() {
@@ -949,7 +1089,7 @@ export default function HistoricoClient({
         </div>
 
         {/* CARDS PRINCIPAIS */}
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
           <DashboardCard
             icon={Users}
@@ -962,14 +1102,20 @@ export default function HistoricoClient({
             icon={ClipboardList}
             title="Matrículas"
             value={matriculas.length}
-            description={`${alunosEmUmaTurma} em uma turma`}
+            description="Clique para ver ativas e inativas"
+            aberto={matriculasAbertas}
+            onClick={() =>
+              setMatriculasAbertas(
+                (valor) => !valor
+              )
+            }
           />
 
           <DashboardCard
             icon={Layers3}
             title="Turmas"
-            value={turmas.length}
-            description={`${turmasLotadas} turma(s) lotada(s)`}
+            value={turmasNaGrade.length}
+            description={`Na grade semanal · ${turmasNaGradeLotadas} lotada(s)`}
           />
 
           <DashboardCard
@@ -982,8 +1128,98 @@ export default function HistoricoClient({
 
         </div>
 
+        {/* DETALHE DAS MATRÍCULAS: ATIVAS X INATIVAS */}
+        {matriculasAbertas && (
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-slate-900">
+                Matrículas: ativas e inativas
+              </h2>
+
+              <span className="text-xs text-slate-400">
+                Total: {matriculas.length}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                  Ativas
+                </div>
+
+                <div className="mt-1 text-3xl font-bold text-emerald-800">
+                  {resumoMatriculas.ativas}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Inativas
+                </div>
+
+                <div className="mt-1 text-3xl font-bold text-slate-700">
+                  {resumoMatriculas.inativas}
+                </div>
+              </div>
+
+            </div>
+
+            <div className="mt-4">
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-emerald-500"
+                  style={{
+                    width: `${percentual(
+                      resumoMatriculas.ativas,
+                      matriculas.length
+                    )}%`,
+                  }}
+                />
+              </div>
+
+              <p className="mt-1 text-xs text-slate-500">
+                {percentual(
+                  resumoMatriculas.ativas,
+                  matriculas.length
+                )}
+                % das matrículas estão ativas
+              </p>
+            </div>
+
+            {resumoMatriculas.inativas > 0 && (
+              <div className="mt-4">
+                <p className="mb-2 text-xs font-semibold text-slate-600">
+                  Por que estão inativas
+                </p>
+
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <InfoMini
+                    label="Matrícula encerrada"
+                    value={resumoMatriculas.motivos.encerrada}
+                  />
+                  <InfoMini
+                    label="Desistência"
+                    value={resumoMatriculas.motivos.desistencia}
+                  />
+                  <InfoMini
+                    label="Turma encerrada"
+                    value={resumoMatriculas.motivos.turma_encerrada}
+                  />
+                  <InfoMini
+                    label="Aluno inativo ou sem dados"
+                    value={resumoMatriculas.motivos.aluno_inativo}
+                  />
+                </div>
+              </div>
+            )}
+
+          </section>
+        )}
+
         {/* SEGUNDA LINHA DE INDICADORES */}
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
           <SmallMetric
             icon={UserPlus}
@@ -1019,12 +1255,109 @@ export default function HistoricoClient({
           <SmallMetric
             icon={School}
             title="Cursos ativos"
-            value={alunosPorCurso.length}
-            description={`${cursos.length} cadastrados`}
+            value={cursosPorGrade.ativos.length}
+            description="Com turma na grade · clique para ver"
             tone="blue"
+            aberto={cursosAbertos}
+            onClick={() =>
+              setCursosAbertos(
+                (valor) => !valor
+              )
+            }
           />
 
         </div>
+
+        {/* DETALHE DOS CURSOS: ATIVOS X INATIVOS */}
+        {cursosAbertos && (
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="font-bold text-slate-900">
+                Cursos: ativos e inativos
+              </h2>
+
+              <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
+                {(
+                  [
+                    {
+                      id: "ativos",
+                      rotulo: "Ativos",
+                      total: cursosPorGrade.ativos.length,
+                    },
+                    {
+                      id: "inativos",
+                      rotulo: "Inativos",
+                      total: cursosPorGrade.inativos.length,
+                    },
+                  ] as const
+                ).map((aba) => (
+                  <button
+                    key={aba.id}
+                    type="button"
+                    onClick={() => setAbaCursos(aba.id)}
+                    className={`rounded-md px-4 py-1.5 text-xs font-semibold transition ${
+                      abaCursos === aba.id
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    {aba.rotulo} ({aba.total})
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <ul className="mt-4 grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+              {abaCursos === "ativos" &&
+                cursosPorGrade.ativos.map((curso) => (
+                  <li
+                    key={curso.id}
+                    className="flex items-center justify-between gap-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm"
+                  >
+                    <span className="font-medium text-slate-800">
+                      {curso.titulo}
+                    </span>
+
+                    <span className="shrink-0 text-xs text-emerald-700">
+                      {curso.turmas}{" "}
+                      {curso.turmas === 1 ? "turma" : "turmas"}
+                    </span>
+                  </li>
+                ))}
+
+              {abaCursos === "inativos" &&
+                cursosPorGrade.inativos.map((curso) => (
+                  <li
+                    key={curso.id}
+                    className="rounded-lg bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600"
+                  >
+                    {curso.titulo}
+                  </li>
+                ))}
+            </ul>
+
+            {abaCursos === "ativos" &&
+              cursosPorGrade.ativos.length === 0 && (
+                <p className="py-4 text-center text-sm text-slate-400">
+                  Nenhum curso com turma na grade.
+                </p>
+              )}
+
+            {abaCursos === "inativos" &&
+              cursosPorGrade.inativos.length === 0 && (
+                <p className="py-4 text-center text-sm text-slate-400">
+                  Todos os cursos têm turma na grade.
+                </p>
+              )}
+
+            <p className="mt-3 text-[11px] text-slate-400">
+              Ativo = curso com pelo menos uma turma na grade semanal.
+              Inativo = curso cadastrado sem turma na grade.
+            </p>
+
+          </section>
+        )}
 
         {/* DESTAQUE: ALUNOS EM VÁRIAS TURMAS */}
         <section className="mt-6 rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 to-white p-5 shadow-sm">
@@ -1823,21 +2156,25 @@ function DashboardCard({
   value,
   description,
   destaque = false,
+  onClick,
+  aberto = false,
 }: {
   icon: typeof Users;
   title: string;
   value: string | number;
   description: string;
   destaque?: boolean;
+  onClick?: () => void;
+  aberto?: boolean;
 }) {
-  return (
-    <div
-      className={`rounded-2xl border p-5 shadow-sm ${
-        destaque
-          ? "border-emerald-200 bg-emerald-50"
-          : "border-slate-200 bg-white"
-      }`}
-    >
+  const classes = `rounded-2xl border p-5 text-left shadow-sm ${
+    destaque
+      ? "border-emerald-200 bg-emerald-50"
+      : "border-slate-200 bg-white"
+  } ${onClick ? "w-full cursor-pointer transition hover:bg-slate-50" : ""}`;
+
+  const corpo = (
+    <>
 
       <div className="flex items-center justify-between">
 
@@ -1865,11 +2202,32 @@ function DashboardCard({
         {title}
       </div>
 
-      <div className="mt-1 text-xs text-slate-400">
+      <div className="mt-1 flex items-center gap-1 text-xs text-slate-400">
         {description}
+
+        {onClick && (
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 transition-transform ${
+              aberto ? "rotate-180" : ""
+            }`}
+          />
+        )}
       </div>
 
-    </div>
+    </>
+  );
+
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={aberto}
+      className={classes}
+    >
+      {corpo}
+    </button>
+  ) : (
+    <div className={classes}>{corpo}</div>
   );
 }
 
@@ -1879,6 +2237,8 @@ function SmallMetric({
   value,
   description,
   tone,
+  onClick,
+  aberto = false,
 }: {
   icon: typeof Users;
   title: string;
@@ -1889,6 +2249,8 @@ function SmallMetric({
     | "green"
     | "red"
     | "blue";
+  onClick?: () => void;
+  aberto?: boolean;
 }) {
   const classes = {
     purple:
@@ -1901,8 +2263,14 @@ function SmallMetric({
       "bg-blue-50 text-blue-600",
   };
 
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+  const caixa =
+    "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" +
+    (onClick
+      ? " w-full cursor-pointer text-left transition hover:bg-slate-50"
+      : "");
+
+  const corpo = (
+    <>
 
       <div className="flex items-start gap-3">
 
@@ -1922,15 +2290,36 @@ function SmallMetric({
             {value}
           </div>
 
-          <div className="mt-0.5 text-[11px] text-slate-400">
+          <div className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
             {description}
+
+            {onClick && (
+              <ChevronDown
+                className={`h-3 w-3 shrink-0 transition-transform ${
+                  aberto ? "rotate-180" : ""
+                }`}
+              />
+            )}
           </div>
 
         </div>
 
       </div>
 
-    </div>
+    </>
+  );
+
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={aberto}
+      className={caixa}
+    >
+      {corpo}
+    </button>
+  ) : (
+    <div className={caixa}>{corpo}</div>
   );
 }
 
