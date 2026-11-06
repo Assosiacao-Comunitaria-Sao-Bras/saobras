@@ -624,30 +624,79 @@ export default function HistoricoClient({
     ]);
 
   /*
-   * PRESENÇAS E FALTAS
+   * ALUNOS COM MATRÍCULA ATIVA
+   * Mesma regra da página de Matrículas (sem encerramento, sem desistência,
+   * aluno ativo e turma ativa).
    */
-  const totalPresencas =
+  const alunosComMatriculaAtiva =
+    useMemo(() => {
+      const ids = new Set<string>();
+
+      matriculas.forEach(
+        (matricula) => {
+          const motivo =
+            motivoMatriculaInativa({
+              encerrada_em:
+                matricula.encerrada_em,
+              desistiu_em:
+                matricula.desistiu_em,
+              alunos: pegarRelacao(
+                matricula.alunos
+              ),
+              turmas: pegarRelacao(
+                matricula.turmas
+              ),
+            });
+
+          if (!motivo) {
+            ids.add(
+              matricula.aluno_id
+            );
+          }
+        }
+      );
+
+      return ids;
+    }, [matriculas]);
+
+  /*
+   * PRESENÇAS E FALTAS
+   * Só dos alunos que têm matrícula ativa.
+   */
+  const presencasDeAtivos =
     useMemo(
       () =>
         presencas.filter(
+          (p) =>
+            alunosComMatriculaAtiva.has(
+              p.aluno_id
+            )
+        ),
+      [presencas, alunosComMatriculaAtiva]
+    );
+
+  const totalPresencas =
+    useMemo(
+      () =>
+        presencasDeAtivos.filter(
           (p) =>
             ehPresenca(
               p.status
             )
         ).length,
-      [presencas]
+      [presencasDeAtivos]
     );
 
   const totalFaltas =
     useMemo(
       () =>
-        presencas.filter(
+        presencasDeAtivos.filter(
           (p) =>
             ehFalta(
               p.status
             )
         ).length,
-      [presencas]
+      [presencasDeAtivos]
     );
 
   const totalRegistros =
@@ -1101,8 +1150,8 @@ export default function HistoricoClient({
           <DashboardCard
             icon={ClipboardList}
             title="Matrículas"
-            value={matriculas.length}
-            description="Clique para ver ativas e inativas"
+            value={resumoMatriculas.ativas}
+            description="Ativas · clique para ver total e inativas"
             aberto={matriculasAbertas}
             onClick={() =>
               setMatriculasAbertas(
@@ -1134,15 +1183,21 @@ export default function HistoricoClient({
 
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-slate-900">
-                Matrículas: ativas e inativas
+                Matrículas: total, ativas e inativas
               </h2>
-
-              <span className="text-xs text-slate-400">
-                Total: {matriculas.length}
-              </span>
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                  Total
+                </div>
+
+                <div className="mt-1 text-3xl font-bold text-blue-800">
+                  {matriculas.length}
+                </div>
+              </div>
 
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                 <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
@@ -1240,7 +1295,7 @@ export default function HistoricoClient({
             icon={CheckCircle2}
             title="Presenças"
             value={totalPresencas}
-            description="Registros realizados"
+            description="De alunos com matrícula ativa"
             tone="green"
           />
 
@@ -1248,7 +1303,7 @@ export default function HistoricoClient({
             icon={XCircle}
             title="Faltas"
             value={totalFaltas}
-            description="Registros de ausência"
+            description="De alunos com matrícula ativa"
             tone="red"
           />
 
