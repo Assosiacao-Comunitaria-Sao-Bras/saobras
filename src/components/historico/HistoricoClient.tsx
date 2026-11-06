@@ -1151,7 +1151,7 @@ export default function HistoricoClient({
             icon={ClipboardList}
             title="Matrículas"
             value={resumoMatriculas.ativas}
-            description="Ativas · clique para ver total e inativas"
+            description="Ativas"
             aberto={matriculasAbertas}
             onClick={() =>
               setMatriculasAbertas(
@@ -1311,7 +1311,7 @@ export default function HistoricoClient({
             icon={School}
             title="Cursos ativos"
             value={cursosPorGrade.ativos.length}
-            description="Com turma na grade · clique para ver"
+            description="Com turma na grade"
             tone="blue"
             aberto={cursosAbertos}
             onClick={() =>
