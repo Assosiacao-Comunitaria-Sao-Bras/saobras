@@ -4,6 +4,7 @@ import { Fragment, useState, useEffect } from "react";
 import { Plus, Edit2, Trash2, Calendar, BookOpen, Clock, X, Save, Archive, RotateCcw, ChevronDown, ChevronUp, Users, CheckCircle2, XCircle, ClipboardList, Search, Filter } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { DIAS_SEMANA, HORARIOS, HORARIOS_DESATIVADOS, getHorarioByLabel, getHorarioLabel } from "@/lib/grade-semanal";
 
 export type Curso = {
   id: string;
