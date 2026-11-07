@@ -6,7 +6,7 @@ import { CampoNascimento } from "@/components/alunos/CampoNascimento";
 import { cpfTemOnzeDigitos } from "@/lib/validacao";
 import { matriculaEstaAtiva } from "@/lib/matriculas-situacao";
 import { supabase } from "@/lib/supabase";
-import { verificarVagaNaTurma } from "@/lib/vagas-turma";
+import { verificarVagaNaTurma, LIMITE_VAGAS_TURMA } from "@/lib/vagas-turma";
 import {
   baixarFichaAposMatricula,
   baixarFichaPorMatricula,
@@ -23,6 +23,7 @@ import {
   Trash2,
   AlertTriangle,
   Lock,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -115,6 +116,22 @@ export default function MatriculasClient({
   const [isSaving, setIsSaving] = useState(false);
 
   const [baixandoFichaId, setBaixandoFichaId] = useState<string | null>(null);
+
+  // Troca de turma/horário da matrícula
+  type TurmaTroca = {
+    id: string;
+    nome: string;
+    curso_id: string;
+    horario: string | null;
+    dias_semana: string[] | null;
+    ocupadas: number;
+  };
+  const [matriculaTroca, setMatriculaTroca] = useState<Matricula | null>(null);
+  const [turmasTroca, setTurmasTroca] = useState<TurmaTroca[]>([]);
+  const [novaTurmaId, setNovaTurmaId] = useState("");
+  const [carregandoTroca, setCarregandoTroca] = useState(false);
+  const [trocando, setTrocando] = useState(false);
+  const [erroTroca, setErroTroca] = useState("");
 
   // Exclusão de matrícula (confirmação + senha)
   const [matriculaParaApagar, setMatriculaParaApagar] = useState<Matricula | null>(null);
@@ -414,6 +431,150 @@ export default function MatriculasClient({
     }
   };
 
+  const abrirTroca = async (matricula: Matricula) => {
+    setMatriculaTroca(matricula);
+    setNovaTurmaId("");
+    setErroTroca("");
+    setTurmasTroca([]);
+    setCarregandoTroca(true);
+
+    try {
+      // Turmas ativas do mesmo curso (menos a turma atual)
+      const { data: turmasData, error: erroTurmas } = await supabase
+        .from("turmas")
+        .select("id, nome, curso_id, horario, dias_semana")
+        .eq("curso_id", matricula.curso_id)
+        .eq("status", "ativa")
+        .neq("id", matricula.turma_id)
+        .order("nome");
+
+      if (erroTurmas) {
+        throw erroTurmas;
+      }
+
+      const ids = (turmasData || []).map((t) => t.id);
+      const ocupadas: Record<string, number> = {};
+
+      if (ids.length > 0) {
+        const { data: ocupacao, error: erroOcupacao } = await supabase
+          .from("matriculas")
+          .select("turma_id")
+          .in("turma_id", ids)
+          .is("encerrada_em", null)
+          .is("desistiu_em", null);
+
+        if (erroOcupacao) {
+          throw erroOcupacao;
+        }
+
+        (ocupacao || []).forEach((item: any) => {
+          ocupadas[item.turma_id] = (ocupadas[item.turma_id] || 0) + 1;
+        });
+      }
+
+      setTurmasTroca(
+        (turmasData || []).map((t: any) => ({
+          ...t,
+          ocupadas: ocupadas[t.id] || 0,
+        }))
+      );
+    } catch (err: any) {
+      setErroTroca("Não foi possível carregar as turmas: " + (err?.message || "erro desconhecido"));
+    } finally {
+      setCarregandoTroca(false);
+    }
+  };
+
+  const fecharTroca = () => {
+    if (trocando) {
+      return;
+    }
+
+    setMatriculaTroca(null);
+    setNovaTurmaId("");
+    setErroTroca("");
+  };
+
+  const handleTrocarTurma = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!matriculaTroca || trocando) {
+      return;
+    }
+
+    const novaTurma = turmasTroca.find((t) => t.id === novaTurmaId);
+
+    if (!novaTurma) {
+      setErroTroca("Escolha a nova turma.");
+      return;
+    }
+
+    setTrocando(true);
+    setErroTroca("");
+
+    try {
+      const jaMatriculado = matriculas.some(
+        (m) =>
+          m.aluno_id === matriculaTroca.aluno_id &&
+          m.turma_id === novaTurma.id &&
+          matriculaEstaAtiva(m)
+      );
+
+      if (jaMatriculado) {
+        setErroTroca("Este aluno já está matriculado na turma escolhida.");
+        return;
+      }
+
+      const avisoLotada = await verificarVagaNaTurma(novaTurma.id);
+
+      if (avisoLotada) {
+        setErroTroca(avisoLotada);
+        return;
+      }
+
+      // A mesma matrícula é atualizada (nada é apagado). A data passa a ser a da troca.
+      const { data: atualizadas, error: erroAtualizar } = await supabase
+        .from("matriculas")
+        .update({
+          turma_id: novaTurma.id,
+          curso_id: novaTurma.curso_id,
+          data_matricula: new Date().toISOString(),
+        })
+        .eq("id", matriculaTroca.id)
+        .select("id");
+
+      if (erroAtualizar) {
+        throw erroAtualizar;
+      }
+
+      if (!atualizadas || atualizadas.length === 0) {
+        throw new Error("Não foi possível alterar a matrícula (verifique a permissão no banco).");
+      }
+
+      const idMatricula = matriculaTroca.id;
+
+      setMatriculaTroca(null);
+      setNovaTurmaId("");
+
+      router.refresh();
+
+      // Gera a nova ficha de inscrição para imprimir e assinar.
+      try {
+        await baixarFichaPorMatricula(idMatricula);
+      } catch (errFicha: any) {
+        alert(
+          "A turma foi trocada, mas não foi possível gerar a ficha de inscrição: " +
+            (errFicha?.message || "erro desconhecido") +
+            "\n\nVocê pode baixá-la depois pelo ícone de ficha na lista de matrículas."
+        );
+      }
+    } catch (err: any) {
+      setErroTroca("Erro ao trocar de turma: " + (err?.message || "erro desconhecido"));
+    } finally {
+      setTrocando(false);
+    }
+  };
+
   const abrirExclusao = (matricula: Matricula) => {
     setMatriculaParaApagar(matricula);
     setPassoExclusao("confirmar");
@@ -680,6 +841,13 @@ export default function MatriculasClient({
                         )}
                       </button>
                       {matriculaEstaAtiva(m) && <button
+                        onClick={() => abrirTroca(m)}
+                        className="p-1.5 mr-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
+                        title="Trocar de turma / horário"
+                      >
+                        <ArrowRightLeft className="w-4 h-4" />
+                      </button>}
+                      {matriculaEstaAtiva(m) && <button
                         onClick={() =>
                           handleEncerrar(m.id)
                         }
@@ -703,6 +871,108 @@ export default function MatriculasClient({
           </table>
         </div>
       </div>
+
+      {/* MODAL TROCAR TURMA / HORÁRIO */}
+      {matriculaTroca && (
+        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="flex justify-between items-center p-5 border-b border-slate-200 bg-slate-50">
+              <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+                <ArrowRightLeft className="w-5 h-5 text-blue-600" />
+                Trocar de turma / horário
+              </h3>
+              <button type="button" onClick={fecharTroca} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleTrocarTurma} className="p-5 space-y-4">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                <p className="font-semibold text-slate-900">
+                  {matriculaTroca.alunos?.nome_completo || "Aluno não identificado"}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Curso: {matriculaTroca.cursos?.titulo || "não informado"}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Turma atual: {matriculaTroca.turmas?.nome || "—"}
+                  {matriculaTroca.turmas?.horario ? ` • ${matriculaTroca.turmas.horario}` : ""}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nova turma</label>
+
+                {carregandoTroca ? (
+                  <p className="flex items-center gap-2 text-sm text-slate-500">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Carregando turmas...
+                  </p>
+                ) : turmasTroca.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    Não há outra turma ativa deste curso para trocar.
+                  </p>
+                ) : (
+                  <select
+                    value={novaTurmaId}
+                    onChange={(e) => {
+                      setNovaTurmaId(e.target.value);
+                      setErroTroca("");
+                    }}
+                    disabled={trocando}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                  >
+                    <option value="">Selecione a nova turma</option>
+                    {turmasTroca.map((t) => {
+                      const lotada = t.ocupadas >= LIMITE_VAGAS_TURMA;
+
+                      return (
+                        <option key={t.id} value={t.id} disabled={lotada}>
+                          {t.nome}
+                          {t.horario ? ` • ${t.horario}` : ""}
+                          {t.dias_semana?.length ? ` • ${t.dias_semana.join(", ")}` : ""}
+                          {lotada
+                            ? " (lotada)"
+                            : ` (${t.ocupadas}/${LIMITE_VAGAS_TURMA} alunos)`}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
+              </div>
+
+              <p className="text-xs text-slate-500">
+                A matrícula será atualizada para a nova turma (nada é apagado) e a ficha de
+                inscrição será gerada de novo para imprimir e assinar.
+              </p>
+
+              {erroTroca && (
+                <p className="rounded-md bg-red-50 border border-red-100 px-3 py-2 text-sm text-red-700">
+                  {erroTroca}
+                </p>
+              )}
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={fecharTroca}
+                  disabled={trocando}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={trocando || carregandoTroca || !novaTurmaId}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {trocando && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Trocar e gerar ficha
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL APAGAR MATRÍCULA */}
       {matriculaParaApagar && (
