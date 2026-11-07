@@ -1,5 +1,4 @@
 import { Sidebar } from "@/components/layout/Sidebar";
-import { MenuOperador } from "@/components/layout/MenuOperador";
 import { createClient } from "@/lib/supabase/server";
 
 export const revalidate = 0;
@@ -79,8 +78,20 @@ export default async function DashboardLayout({
             </div>
           </div>
 
-          {/* Operador conectado (clique para alterar a senha) */}
-          <MenuOperador nome={nomeOperador || "Operador"} email={user?.email ?? ""} />
+          {/* Operador conectado */}
+          <div
+            className="flex max-w-[55%] shrink-0 items-center gap-2 rounded-full border border-blue-100 bg-[#f2f7ff] px-3 py-2 sm:px-4"
+            title={`Operador conectado: ${nomeOperador || "Operador"}`}
+          >
+            <span
+              className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
+              aria-label="Conectado"
+            />
+
+            <span className="max-w-[90px] truncate text-xs font-semibold text-[#202044] sm:max-w-[320px] sm:text-sm">
+              {nomeOperador || "Operador"}
+            </span>
+          </div>
         </header>
 
         <main className="app-main min-w-0 px-3 pb-8 pt-5 sm:px-5 sm:pt-6 lg:px-7 lg:pt-7 2xl:px-10">
