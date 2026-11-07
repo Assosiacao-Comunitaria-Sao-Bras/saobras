@@ -677,6 +677,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
   const [activeTab, setActiveTab] = useState<"cursos" | "turmas">("turmas");
 
   const [isCursoModalOpen, setIsCursoModalOpen] = useState(false);
+  const [cursoDetalhe, setCursoDetalhe] = useState<Curso | null>(null);
   const [isTurmaModalOpen, setIsTurmaModalOpen] = useState(false);
   const [editingCurso, setEditingCurso] = useState<Partial<Curso> | null>(null);
   const [editingTurma, setEditingTurma] = useState<Partial<Turma> | null>(null);
@@ -931,21 +932,22 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                   const cursoColor = COLOR_THEMES[getColorForId(curso.id)];
 
                   return (
-                    <tr key={curso.id} className="hover:bg-slate-50 group align-top">
+                    <tr key={curso.id} className="hover:bg-slate-50 group">
                       <td className="px-6 py-4 font-medium text-slate-900 min-w-[12rem]">
-                        <div className="flex items-start gap-3">
-                          <div className={`mt-1 w-3 h-3 shrink-0 rounded-full ${cursoColor.badge} border`} title="Cor de identificação do curso" />
+                        <button type="button" onClick={() => setCursoDetalhe(curso)} className="flex items-center gap-3 text-left hover:text-blue-700" title="Clique para ver os detalhes do curso">
+                          <span className={`w-3 h-3 shrink-0 rounded-full ${cursoColor.badge} border`} />
                           <span className="break-words">{curso.titulo}</span>
-                        </div>
+                        </button>
                       </td>
-                      <td className="px-6 py-4 min-w-[22rem] max-w-xl">
-                        {curso.descricao ? (
-                          <p className="whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">
-                            {curso.descricao}
-                          </p>
-                        ) : (
-                          <span className="italic text-slate-400">Sem descrição</span>
-                        )}
+                      <td className="px-6 py-4 max-w-xs">
+                        <button type="button" onClick={() => setCursoDetalhe(curso)} className="block w-full text-left" title="Clique para ver a descrição completa">
+                          {curso.descricao ? (
+                            <span className="block truncate text-slate-500">{curso.descricao}</span>
+                          ) : (
+                            <span className="block italic text-slate-400">Sem descrição</span>
+                          )}
+                          <span className="mt-0.5 block text-xs font-medium text-blue-600 hover:text-blue-700">Ver detalhes</span>
+                        </button>
                       </td>
                       <td className="px-6 py-4 text-center text-slate-700">
                         {curso.carga_horaria ? `${curso.carga_horaria}h` : <span className="italic text-slate-400">—</span>}
@@ -1227,6 +1229,85 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
       )}
 
       {/* MODAL CURSO */}
+      {cursoDetalhe && (() => {
+        const turmasDoDetalhe = turmasAtivas.filter(t => t.curso_id === cursoDetalhe.id);
+        const corDetalhe = COLOR_THEMES[getColorForId(cursoDetalhe.id)];
+
+        return (
+          <div
+            className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4"
+            onClick={() => setCursoDetalhe(null)}
+          >
+            <div
+              className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-start gap-3 p-4 border-b border-slate-200">
+                <div className="flex items-start gap-3 min-w-0">
+                  <span className={`mt-1.5 w-3 h-3 shrink-0 rounded-full ${corDetalhe.badge} border`} />
+                  <h3 className="font-bold text-lg text-slate-900 break-words">{cursoDetalhe.titulo}</h3>
+                </div>
+                <button onClick={() => setCursoDetalhe(null)} className="text-slate-400 hover:text-slate-600 shrink-0" title="Fechar"><X className="w-5 h-5" /></button>
+              </div>
+
+              <div className="p-4 space-y-4 overflow-y-auto">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Descrição</p>
+                  {cursoDetalhe.descricao ? (
+                    <p className="whitespace-pre-line break-words text-sm leading-relaxed text-slate-800">{cursoDetalhe.descricao}</p>
+                  ) : (
+                    <p className="text-sm italic text-slate-400">Sem descrição</p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Carga horária</p>
+                    <p className="mt-1 text-sm font-medium text-slate-800">
+                      {cursoDetalhe.carga_horaria ? `${cursoDetalhe.carga_horaria}h` : "Não informada"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Turmas ativas</p>
+                    <p className="mt-1 text-sm font-medium text-slate-800">
+                      {turmasDoDetalhe.length} {turmasDoDetalhe.length === 1 ? "turma" : "turmas"}
+                    </p>
+                  </div>
+                </div>
+
+                {turmasDoDetalhe.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Turmas</p>
+                    <ul className="space-y-1">
+                      {turmasDoDetalhe.map(t => (
+                        <li key={t.id} className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                          {t.nome}{t.horario ? ` · ${t.horario}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 p-4 border-t border-slate-200">
+                <button
+                  onClick={() => { setEditingCurso(cursoDetalhe); setCursoDetalhe(null); setIsCursoModalOpen(true); }}
+                  className="px-4 py-2 text-sm font-medium text-blue-700 border border-blue-200 rounded-md hover:bg-blue-50 flex items-center gap-2"
+                >
+                  <Edit2 className="w-4 h-4" /> Editar
+                </button>
+                <button
+                  onClick={() => setCursoDetalhe(null)}
+                  className="px-4 py-2 text-sm font-medium text-white bg-slate-700 rounded-md hover:bg-slate-800"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {isCursoModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
