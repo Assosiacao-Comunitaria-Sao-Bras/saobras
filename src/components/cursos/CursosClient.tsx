@@ -3,6 +3,7 @@
 import { Fragment, useState, useEffect } from "react";
 import { Plus, Edit2, Trash2, Calendar, BookOpen, Clock, X, Save, Archive, RotateCcw, ChevronDown, ChevronUp, Users, CheckCircle2, XCircle, ClipboardList, Search, Filter } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { ModalAcaoComSenha } from "@/components/ui/ModalAcaoComSenha";
 import { useRouter } from "next/navigation";
 import { DIAS_SEMANA, HORARIOS, HORARIOS_DESATIVADOS, getHorarioByLabel, getHorarioLabel } from "@/lib/grade-semanal";
 
@@ -679,6 +680,11 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
   const [isCursoModalOpen, setIsCursoModalOpen] = useState(false);
   const [cursoDetalhe, setCursoDetalhe] = useState<Curso | null>(null);
   const [isTurmaModalOpen, setIsTurmaModalOpen] = useState(false);
+  // Ação pendente sobre uma turma (pede confirmação + senha antes de executar)
+  const [acaoTurma, setAcaoTurma] = useState<{
+    tipo: "apagar" | "encerrar" | "encerrar_nova";
+    turma: Partial<Turma>;
+  } | null>(null);
   const [editingCurso, setEditingCurso] = useState<Partial<Curso> | null>(null);
   const [editingTurma, setEditingTurma] = useState<Partial<Turma> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -796,25 +802,35 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
       return;
     }
 
-    if (!confirm("Esta turma não tem alunos nem frequência. Excluir definitivamente?")) return;
+    const turma = turmas.find((t) => t.id === id);
+    setAcaoTurma({ tipo: "apagar", turma: { id, nome: turma?.nome } });
+  };
+
+  // Executa a exclusão (chamada só depois da confirmação e da senha).
+  const executarApagarTurma = async (id: string): Promise<string | null> => {
     const { error } = await supabase.from("turmas").delete().eq("id", id);
-    if (error) alert("Erro ao excluir: " + error.message);
-    else {
-      setIsTurmaModalOpen(false);
-      router.refresh();
+
+    if (error) {
+      return "Erro ao excluir: " + error.message;
     }
+
+    setAcaoTurma(null);
+    setIsTurmaModalOpen(false);
+    router.refresh();
+
+    return null;
   };
 
   // Encerra a turma: ela sai da grade, mas alunos, matrículas e frequência continuam salvos.
-  const handleEncerrarTurma = async (turma: Partial<Turma>, abrirNova = false) => {
+  // Abre a confirmação (com senha); a execução fica em executarEncerrarTurma.
+  const handleEncerrarTurma = (turma: Partial<Turma>, abrirNova = false) => {
     if (!turma.id) return;
 
-    const alunos = vagasOcupadas[turma.id] || 0;
-    const mensagem = abrirNova
-      ? `Encerrar a turma "${turma.nome}" (${alunos} aluno(s)) e abrir uma nova no mesmo horário?\n\nOs alunos, matrículas e a frequência da turma encerrada continuam salvos no histórico.`
-      : `Encerrar a turma "${turma.nome}" (${alunos} aluno(s))?\n\nEla sai da grade, mas os alunos, matrículas e a frequência continuam salvos no histórico. A data de hoje será registrada como data de encerramento.`;
+    setAcaoTurma({ tipo: abrirNova ? "encerrar_nova" : "encerrar", turma });
+  };
 
-    if (!confirm(mensagem)) return;
+  const executarEncerrarTurma = async (turma: Partial<Turma>, abrirNova = false): Promise<string | null> => {
+    if (!turma.id) return "Turma inválida.";
 
     const { error } = await supabase
       .from("turmas")
@@ -825,9 +841,10 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
       .eq("id", turma.id);
 
     if (error) {
-      alert("Erro ao encerrar turma: " + error.message);
-      return;
+      return "Erro ao encerrar turma: " + error.message;
     }
+
+    setAcaoTurma(null);
 
     if (abrirNova) {
       // Mantém o modal aberto já preenchido para criar a nova turma
@@ -846,6 +863,8 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
     }
 
     router.refresh();
+
+    return null;
   };
 
   const handleReabrirTurma = async (turma: Turma) => {
@@ -1474,6 +1493,50 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
           </div>
         </div>
       )}
+
+      {/* CONFIRMAÇÃO COM SENHA: APAGAR / ENCERRAR TURMA */}
+      {acaoTurma && (() => {
+        const { tipo, turma } = acaoTurma;
+        const alunosNaTurma = turma.id ? vagasOcupadas[turma.id] || 0 : 0;
+
+        if (tipo === "apagar") {
+          return (
+            <ModalAcaoComSenha
+              titulo="Apagar turma"
+              pergunta="Você tem certeza que deseja apagar esta turma?"
+              destaque={<p className="font-semibold text-slate-900">{turma.nome}</p>}
+              aviso="Esta turma não tem alunos nem frequência. Essa ação não pode ser desfeita."
+              rotuloFinal="Apagar definitivamente"
+              onConfirmar={() => executarApagarTurma(turma.id!)}
+              onFechar={() => setAcaoTurma(null)}
+            />
+          );
+        }
+
+        const abrirNova = tipo === "encerrar_nova";
+
+        return (
+          <ModalAcaoComSenha
+            titulo="Encerrar turma"
+            tom="amber"
+            pergunta={
+              abrirNova
+                ? "Você tem certeza que deseja encerrar esta turma e abrir uma nova no mesmo horário?"
+                : "Você tem certeza que deseja encerrar esta turma?"
+            }
+            destaque={
+              <>
+                <p className="font-semibold text-slate-900">{turma.nome}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{alunosNaTurma} aluno(s) matriculado(s)</p>
+              </>
+            }
+            aviso="A turma sai da grade, mas os alunos, as matrículas e a frequência continuam salvos no histórico. A data de hoje será registrada como data de encerramento."
+            rotuloFinal={abrirNova ? "Encerrar e abrir nova" : "Encerrar turma"}
+            onConfirmar={() => executarEncerrarTurma(turma, abrirNova)}
+            onFechar={() => setAcaoTurma(null)}
+          />
+        );
+      })()}
 
     </div>
   );
