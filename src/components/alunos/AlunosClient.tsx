@@ -15,6 +15,7 @@ import {
   FileDown,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { ModalAcaoComSenha } from "@/components/ui/ModalAcaoComSenha";
 import { verificarVagaNaTurma } from "@/lib/vagas-turma";
 import { baixarFichaAposMatricula, baixarFichaPorMatricula } from "@/lib/ficha-inscricao";
 import { useRouter } from "next/navigation";
@@ -118,7 +119,6 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   // Estados da exclusão
-  const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   /*
@@ -484,10 +484,8 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
     setShowDeleteConfirm(true);
   };
 
-  const handleDelete = async () => {
-    if (!selectedAluno) return;
-
-    setIsDeleting(true);
+  const handleDelete = async (): Promise<string | null> => {
+    if (!selectedAluno) return "Nenhum aluno selecionado.";
 
     /*
      * Primeiro removemos as matrículas do aluno.
@@ -500,14 +498,10 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
       .eq("aluno_id", selectedAluno.id);
 
     if (matriculaError) {
-      setIsDeleting(false);
-
-      alert(
+      return (
         "Erro ao excluir as matrículas do aluno: " +
-          matriculaError.message
+        matriculaError.message
       );
-
-      return;
     }
 
     const { error } = await supabase
@@ -515,11 +509,8 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
       .delete()
       .eq("id", selectedAluno.id);
 
-    setIsDeleting(false);
-
     if (error) {
-      alert("Erro ao excluir aluno: " + error.message);
-      return;
+      return "Erro ao excluir aluno: " + error.message;
     }
 
     setShowDeleteConfirm(false);
@@ -527,6 +518,8 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
     closePanel();
 
     router.refresh();
+
+    return null;
   };
 
   /*
@@ -1944,51 +1937,21 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
         </div>
       )}
 
-      {/* CONFIRMAÇÃO DE EXCLUSÃO */}
+      {/* CONFIRMAÇÃO DE EXCLUSÃO (com senha) */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-slate-900/40 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 text-center transform transition-all">
-            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
-              <Trash2 className="w-6 h-6" />
-            </div>
-
-            <h3 className="text-lg font-bold text-slate-900 mb-2">
-              Excluir aluno?
-            </h3>
-
-            <p className="text-sm text-slate-500 mb-6">
-              Tem certeza que deseja excluir os dados de{" "}
-              <strong>
-                {selectedAluno?.nome_completo}
-              </strong>
-              ? Esta ação não pode ser desfeita.
+        <ModalAcaoComSenha
+          titulo="Apagar aluno"
+          pergunta="Você tem certeza que deseja apagar este aluno?"
+          destaque={
+            <p className="font-semibold text-slate-900">
+              {selectedAluno?.nome_completo}
             </p>
-
-            <div className="flex gap-3 justify-center">
-              <button
-                type="button"
-                onClick={() =>
-                  setShowDeleteConfirm(false)
-                }
-                className="flex-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-md text-sm font-medium transition-colors"
-                disabled={isDeleting}
-              >
-                Cancelar
-              </button>
-
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
-                disabled={isDeleting}
-              >
-                {isDeleting
-                  ? "Excluindo..."
-                  : "Sim, excluir"}
-              </button>
-            </div>
-          </div>
-        </div>
+          }
+          aviso="Os dados do aluno e todas as matrículas dele serão apagados. Essa ação não pode ser desfeita."
+          rotuloFinal="Apagar definitivamente"
+          onConfirmar={handleDelete}
+          onFechar={() => setShowDeleteConfirm(false)}
+        />
       )}
     </>
   );
