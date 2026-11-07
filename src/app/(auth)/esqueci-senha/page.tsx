@@ -22,7 +22,11 @@ export default function EsqueciSenhaPage() {
 
     setIsLoading(false);
     if (resetError) {
-      setError(`Erro: ${resetError.message}`);
+      if (resetError.message.toLowerCase().includes("rate limit")) {
+        setError("Muitos pedidos de recuperação em pouco tempo. Aguarde 2 horas e tente novamente.");
+      } else {
+        setError(`Erro: ${resetError.message}`);
+      }
     } else {
       setEnviado(true);
     }
