@@ -20,6 +20,9 @@ import {
   Loader2,
   Calendar,
   FileDown,
+  Trash2,
+  AlertTriangle,
+  Lock,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -112,6 +115,13 @@ export default function MatriculasClient({
   const [isSaving, setIsSaving] = useState(false);
 
   const [baixandoFichaId, setBaixandoFichaId] = useState<string | null>(null);
+
+  // Exclusão de matrícula (confirmação + senha)
+  const [matriculaParaApagar, setMatriculaParaApagar] = useState<Matricula | null>(null);
+  const [passoExclusao, setPassoExclusao] = useState<"confirmar" | "senha">("confirmar");
+  const [senhaExclusao, setSenhaExclusao] = useState("");
+  const [erroExclusao, setErroExclusao] = useState("");
+  const [apagando, setApagando] = useState(false);
 
   // Form states
   const [selectedAluno, setSelectedAluno] = useState("");
@@ -404,6 +414,90 @@ export default function MatriculasClient({
     }
   };
 
+  const abrirExclusao = (matricula: Matricula) => {
+    setMatriculaParaApagar(matricula);
+    setPassoExclusao("confirmar");
+    setSenhaExclusao("");
+    setErroExclusao("");
+  };
+
+  const fecharExclusao = () => {
+    if (apagando) {
+      return;
+    }
+
+    setMatriculaParaApagar(null);
+    setSenhaExclusao("");
+    setErroExclusao("");
+    setPassoExclusao("confirmar");
+  };
+
+  const handleApagarMatricula = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!matriculaParaApagar || apagando) {
+      return;
+    }
+
+    if (!senhaExclusao) {
+      setErroExclusao("Digite a sua senha de acesso.");
+      return;
+    }
+
+    setApagando(true);
+    setErroExclusao("");
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user?.email) {
+        throw new Error("Usuário não logado.");
+      }
+
+      // Confere a senha de quem está logado antes de apagar.
+      const { error: erroSenha } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: senhaExclusao,
+      });
+
+      if (erroSenha) {
+        setErroExclusao("Senha incorreta. A matrícula não foi apagada.");
+        return;
+      }
+
+      const { data: apagadas, error: erroApagar } = await supabase
+        .from("matriculas")
+        .delete()
+        .eq("id", matriculaParaApagar.id)
+        .select("id");
+
+      if (erroApagar) {
+        throw erroApagar;
+      }
+
+      if (!apagadas || apagadas.length === 0) {
+        throw new Error(
+          "Não foi possível apagar a matrícula (ela já foi removida ou você não tem permissão)."
+        );
+      }
+
+      const idApagado = matriculaParaApagar.id;
+
+      setMatriculas((lista) => lista.filter((item) => item.id !== idApagado));
+      setMatriculaParaApagar(null);
+      setSenhaExclusao("");
+      setPassoExclusao("confirmar");
+
+      router.refresh();
+    } catch (err: any) {
+      setErroExclusao("Erro ao apagar matrícula: " + (err?.message || "erro desconhecido"));
+    } finally {
+      setApagando(false);
+    }
+  };
+
   const matriculasDaAba = useMemo(
     () => matriculas.filter((m) => (aba === "ativas" ? matriculaEstaAtiva(m) : !matriculaEstaAtiva(m))),
     [matriculas, aba]
@@ -594,6 +688,13 @@ export default function MatriculasClient({
                       >
                         <Archive className="w-4 h-4" />
                       </button>}
+                      <button
+                        onClick={() => abrirExclusao(m)}
+                        className="p-1.5 ml-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
+                        title="Apagar matrícula"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -602,6 +703,125 @@ export default function MatriculasClient({
           </table>
         </div>
       </div>
+
+      {/* MODAL APAGAR MATRÍCULA */}
+      {matriculaParaApagar && (
+        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="flex justify-between items-center p-5 border-b border-slate-200 bg-red-50">
+              <h3 className="font-bold text-lg text-red-800 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5" />
+                Apagar matrícula
+              </h3>
+              <button
+                type="button"
+                onClick={fecharExclusao}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {passoExclusao === "confirmar" ? (
+              <div className="p-5 space-y-4">
+                <p className="text-sm text-slate-700">
+                  Você tem certeza que deseja apagar esta matrícula?
+                </p>
+
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <p className="font-semibold text-slate-900">
+                    {matriculaParaApagar.alunos?.nome_completo || "Aluno não identificado"}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {matriculaParaApagar.cursos?.titulo || "Curso não informado"}
+                    {matriculaParaApagar.turmas?.nome
+                      ? ` • ${matriculaParaApagar.turmas.nome}`
+                      : ""}
+                  </p>
+                </div>
+
+                <p className="text-xs text-red-700">
+                  Essa ação não pode ser desfeita. Se você só quer tirar o aluno da turma
+                  mantendo o histórico, use &quot;Encerrar matrícula&quot;.
+                </p>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={fecharExclusao}
+                    className="px-4 py-2 text-sm font-medium text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPassoExclusao("senha")}
+                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
+                  >
+                    Sim, continuar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleApagarMatricula} className="p-5 space-y-4">
+                <p className="text-sm text-slate-700">
+                  Para confirmar, digite a sua senha de acesso ao sistema.
+                </p>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Senha
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="password"
+                      autoFocus
+                      autoComplete="current-password"
+                      value={senhaExclusao}
+                      onChange={(e) => {
+                        setSenhaExclusao(e.target.value);
+                        setErroExclusao("");
+                      }}
+                      disabled={apagando}
+                      className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-1 focus:ring-red-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {erroExclusao && (
+                  <p className="rounded-md bg-red-50 border border-red-100 px-3 py-2 text-sm text-red-700">
+                    {erroExclusao}
+                  </p>
+                )}
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={fecharExclusao}
+                    disabled={apagando}
+                    className="px-4 py-2 text-sm font-medium text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={apagando}
+                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-60 flex items-center gap-2"
+                  >
+                    {apagando ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                    Apagar definitivamente
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* MODAL NOVA MATRÍCULA */}
       {isModalOpen && (
