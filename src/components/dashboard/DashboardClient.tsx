@@ -236,6 +236,16 @@ function nomeHorario(
   return "Horário não informado";
 }
 
+function formatarCPFLista(cpf?: string | null) {
+  const numeros = (cpf || "").replace(/\D/g, "");
+
+  if (numeros.length === 11) {
+    return `${numeros.slice(0, 3)}.${numeros.slice(3, 6)}.${numeros.slice(6, 9)}-${numeros.slice(9, 11)}`;
+  }
+
+  return cpf || "não informado";
+}
+
 export default function DashboardClient({
   cursos,
   turmas,
@@ -274,6 +284,9 @@ export default function DashboardClient({
     useState(false);
 
   const [alunosAbertos, setAlunosAbertos] =
+    useState(false);
+
+  const [multiplasTurmasAbertas, setMultiplasTurmasAbertas] =
     useState(false);
 
   const [cursosAbertos, setCursosAbertos] =
@@ -444,6 +457,56 @@ export default function DashboardClient({
 
     return mapa;
   }, [matriculasAtivasNaGrade]);
+
+  // Lista detalhada dos alunos com matrícula ativa em duas ou mais turmas da grade.
+  const listaAlunosMultiplasTurmas = useMemo(() => {
+    const mapa = new Map<
+      string,
+      { alunoId: string; nome: string; cpf: string | null; turmas: Map<string, { curso: string; turma: string }> }
+    >();
+
+    matriculasAtivasNaGrade.forEach((matricula) => {
+      const cadastro = alunos.find((item) => item.id === matricula.aluno_id);
+      const relacao = pegarRelacao(matricula.alunos);
+
+      let registro = mapa.get(matricula.aluno_id);
+
+      if (!registro) {
+        registro = {
+          alunoId: matricula.aluno_id,
+          nome: cadastro?.nome_completo || relacao?.nome_completo || "Aluno sem nome",
+          cpf: cadastro?.cpf ?? null,
+          turmas: new Map(),
+        };
+        mapa.set(matricula.aluno_id, registro);
+      }
+
+      registro.turmas.set(matricula.turma_id, {
+        curso:
+          cursos.find((item) => item.id === matricula.curso_id)?.titulo ||
+          "Curso não informado",
+        turma:
+          pegarRelacao(matricula.turmas)?.nome ||
+          turmas.find((item) => item.id === matricula.turma_id)?.nome ||
+          "Turma não informada",
+      });
+    });
+
+    return Array.from(mapa.values())
+      .map((registro) => ({
+        ...registro,
+        turmas: Array.from(registro.turmas.entries()).map(([turmaId, dados]) => ({
+          turmaId,
+          ...dados,
+        })),
+      }))
+      .filter((registro) => registro.turmas.length > 1)
+      .sort(
+        (a, b) =>
+          b.turmas.length - a.turmas.length ||
+          a.nome.localeCompare(b.nome, "pt-BR")
+      );
+  }, [matriculasAtivasNaGrade, alunos, cursos, turmas]);
 
   const alunosEmMaisDeUmaTurma =
     useMemo(() => {
@@ -1353,6 +1416,19 @@ export default function DashboardClient({
                 : "Sem dados"
             }
             tone="purple"
+            aberto={multiplasTurmasAbertas}
+            onClick={() => {
+              const vaiAbrir = !multiplasTurmasAbertas;
+              setMultiplasTurmasAbertas(vaiAbrir);
+
+              if (vaiAbrir) {
+                setTimeout(() => {
+                  document
+                    .getElementById("alunos-multiplas-turmas")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 50);
+              }
+            }}
           />
 
           <SmallMetric
@@ -1419,7 +1495,7 @@ export default function DashboardClient({
         )}
 
         {/* DESTAQUE: ALUNOS EM VÁRIAS TURMAS */}
-        <section className="mt-6 rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 to-white p-5 shadow-sm">
+        <section id="alunos-multiplas-turmas" className="mt-6 scroll-mt-24 rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 to-white p-5 shadow-sm">
 
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
 
@@ -1447,7 +1523,12 @@ export default function DashboardClient({
 
             </div>
 
-            <div className="rounded-xl bg-white px-5 py-3 text-center shadow-sm ring-1 ring-purple-100">
+            <button
+              type="button"
+              onClick={() => setMultiplasTurmasAbertas((valor) => !valor)}
+              aria-expanded={multiplasTurmasAbertas}
+              className="rounded-xl bg-white px-5 py-3 text-center shadow-sm ring-1 ring-purple-100 transition hover:bg-purple-50"
+            >
 
               <div className="text-3xl font-bold text-purple-700">
                 {alunosEmMaisDeUmaTurma}
@@ -1457,9 +1538,65 @@ export default function DashboardClient({
                 alunos em múltiplas turmas
               </div>
 
-            </div>
+              <div className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-purple-700">
+                {multiplasTurmasAbertas ? "Ocultar alunos" : "Ver alunos"}
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${
+                    multiplasTurmasAbertas ? "rotate-180" : ""
+                  }`}
+                />
+              </div>
+
+            </button>
 
           </div>
+
+          {multiplasTurmasAbertas && (
+            <div className="mt-5 border-t border-purple-100 pt-4">
+              {listaAlunosMultiplasTurmas.length === 0 ? (
+                <p className="py-6 text-center text-sm text-slate-500">
+                  Nenhum aluno com matrícula ativa em mais de uma turma.
+                </p>
+              ) : (
+                <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
+                  {listaAlunosMultiplasTurmas.map((aluno) => (
+                    <div
+                      key={aluno.alunoId}
+                      className="rounded-xl border border-slate-200 bg-white p-4"
+                    >
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="font-bold text-slate-900">{aluno.nome}</p>
+                          <p className="text-xs text-slate-500">
+                            CPF: {formatarCPFLista(aluno.cpf)}
+                          </p>
+                        </div>
+                        <span className="w-fit rounded-full bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700">
+                          {aluno.turmas.length} turmas
+                        </span>
+                      </div>
+
+                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        {aluno.turmas.map((item) => (
+                          <div
+                            key={item.turmaId}
+                            className="rounded-lg bg-slate-50 px-3 py-2.5"
+                          >
+                            <p className="text-sm font-semibold text-slate-800">
+                              Curso: {item.curso}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              Turma: {item.turma}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
         </section>
 
