@@ -22,6 +22,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { matriculaEstaAtiva } from "@/lib/matriculas-situacao";
+import { turmaEstaNaGrade } from "@/lib/grade-semanal";
 import { ConfiguracaoRelatorio } from "./ConfiguracaoRelatorio";
 import { GraficosRelatorio } from "./GraficosRelatorio";
 import { baixarArquivo, CONFIGURACAO_PADRAO, dataBrasil, emissaoBrasil, gerarCSVRelatorio, nomeArquivoRelatorio, type ConfiguracaoRelatorio as Configuracao, type GraficoRelatorio, type RelatorioExportacao, type TabelaRelatorio } from "@/lib/relatorios-exportacao";
@@ -65,9 +67,20 @@ type MatriculaRelatorio = {
   curso_id: string;
   turma_id: string;
   data_matricula: string | null;
-  alunos: { nome_completo: string; cpf: string | null } | { nome_completo: string; cpf: string | null }[] | null;
+  encerrada_em?: string | null;
+  desistiu_em?: string | null;
+  alunos: { nome_completo: string; cpf: string | null; status_estudante?: boolean | null } | { nome_completo: string; cpf: string | null; status_estudante?: boolean | null }[] | null;
   cursos: { titulo: string } | { titulo: string }[] | null;
-  turmas: { nome: string } | { nome: string }[] | null;
+  turmas: TurmaMatriculaRelatorio | TurmaMatriculaRelatorio[] | null;
+};
+
+type TurmaMatriculaRelatorio = {
+  nome: string;
+  status?: string | null;
+  dias_semana?: string[] | null;
+  horario?: string | null;
+  turno?: string | null;
+  data_hora_inicio?: string | null;
 };
 
 type PresencaRelatorio = {
@@ -204,6 +217,21 @@ export default function RelatoriosClient({
       const aluno = getRelacao(matricula.alunos);
       const curso = getRelacao(matricula.cursos);
       const turma = getRelacao(matricula.turmas);
+
+      // Só conta matrícula ativa em turma que está na grade semanal
+      // (mesmo critério do dashboard).
+      const ativaNaGrade =
+        !!turma &&
+        turmaEstaNaGrade(turma) &&
+        matriculaEstaAtiva({
+          encerrada_em: matricula.encerrada_em,
+          desistiu_em: matricula.desistiu_em,
+          alunos: aluno,
+          turmas: turma,
+        });
+
+      if (!ativaNaGrade) return;
+
       const atual = mapa.get(matricula.aluno_id);
 
       if (!atual) {
@@ -231,15 +259,14 @@ export default function RelatoriosClient({
     return Array.from(mapa.values())
       .map((aluno) => {
         const turmas = Array.from(aluno.turmas.values());
-        const cursosUnicos = new Set(turmas.map((item) => item.cursoId));
         return {
           ...aluno,
           turmas,
-          cursosQuantidade: cursosUnicos.size,
+          turmasQuantidade: turmas.length,
         };
       })
-      .filter((aluno) => aluno.cursosQuantidade > 1)
-      .sort((a, b) => b.cursosQuantidade - a.cursosQuantidade || a.nome.localeCompare(b.nome));
+      .filter((aluno) => aluno.turmasQuantidade > 1)
+      .sort((a, b) => b.turmasQuantidade - a.turmasQuantidade || a.nome.localeCompare(b.nome));
   }, [matriculas]);
 
   const handlePeriodoChange = (
@@ -1044,14 +1071,14 @@ export default function RelatoriosClient({
             </div>
           </section>}
 
-          {/* ALUNOS EM MAIS DE UM CURSO */}
+          {/* ALUNOS EM MAIS DE UMA TURMA */}
           <section className="rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 via-white to-white p-5 shadow-sm">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-start gap-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600"><UserPlus className="h-6 w-6" /></div>
                 <div>
-                  <h2 className="font-bold text-slate-900">Consulta adicional: alunos em mais de um curso</h2>
-                  <p className="mt-1 text-sm text-slate-500">Visão geral dos cadastros, fora do recorte de frequência. Não incluída na exportação.</p>
+                  <h2 className="font-bold text-slate-900">Consulta adicional: alunos em mais de uma turma</h2>
+                  <p className="mt-1 text-sm text-slate-500">Considera só matrículas ativas em turmas da grade semanal, fora do recorte de frequência. Não incluída na exportação.</p>
                 </div>
               </div>
               <button type="button" onClick={() => setMostrarMultiplasTurmas(true)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700">
@@ -1430,19 +1457,19 @@ export default function RelatoriosClient({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setMostrarMultiplasTurmas(false); }}>
           <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <div><h2 className="text-lg font-bold text-slate-900">Alunos em múltiplos cursos</h2><p className="text-sm text-slate-500">{alunosMultiplasTurmas.length} aluno(s) matriculado(s) em dois ou mais cursos.</p></div>
+              <div><h2 className="text-lg font-bold text-slate-900">Alunos em múltiplas turmas</h2><p className="text-sm text-slate-500">{alunosMultiplasTurmas.length} aluno(s) com matrícula ativa em duas ou mais turmas da grade.</p></div>
               <button type="button" onClick={() => setMostrarMultiplasTurmas(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
             </div>
             <div className="overflow-y-auto p-5">
               {alunosMultiplasTurmas.length === 0 ? (
-                <div className="py-12 text-center"><UsersRound className="mx-auto h-10 w-10 text-slate-300" /><p className="mt-3 font-semibold text-slate-700">Nenhum aluno em múltiplos cursos</p></div>
+                <div className="py-12 text-center"><UsersRound className="mx-auto h-10 w-10 text-slate-300" /><p className="mt-3 font-semibold text-slate-700">Nenhum aluno em múltiplas turmas</p></div>
               ) : (
                 <div className="space-y-3">
                   {alunosMultiplasTurmas.map((aluno) => (
                     <div key={aluno.alunoId} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div><p className="font-bold text-slate-900">{aluno.nome}</p><p className="text-xs text-slate-500">CPF: {formatarCPF(aluno.cpf)}</p></div>
-                        <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700">{aluno.cursosQuantidade} cursos</span>
+                        <span className="rounded-full bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700">{aluno.turmasQuantidade} turmas</span>
                       </div>
                       <div className="mt-3 grid gap-2 md:grid-cols-2">
                         {aluno.turmas.map((turma) => (
