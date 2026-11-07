@@ -6,6 +6,7 @@ import { CampoNascimento } from "@/components/alunos/CampoNascimento";
 import { cpfTemOnzeDigitos } from "@/lib/validacao";
 import { matriculaEstaAtiva } from "@/lib/matriculas-situacao";
 import { supabase } from "@/lib/supabase";
+import { verificarVagaNaTurma } from "@/lib/vagas-turma";
 import {
   baixarFichaAposMatricula,
   baixarFichaPorMatricula,
@@ -305,6 +306,17 @@ export default function MatriculasClient({
         alert(
           "Este aluno já está matriculado nesta turma!"
         );
+
+        setIsSaving(false);
+
+        return;
+      }
+
+      // Limite de vagas da turma
+      const avisoLotada = await verificarVagaNaTurma(selectedTurma);
+
+      if (avisoLotada) {
+        alert(avisoLotada);
 
         setIsSaving(false);
 
