@@ -14,6 +14,7 @@ import {
   FileText,
   Home,
   Menu,
+  History,
   X,
 } from "lucide-react";
 
@@ -26,6 +27,7 @@ const menuItems = [
   { name: "Cursos e Turmas", href: "/cursos", icon: BookOpen },
   { name: "Relatórios", href: "/relatorios", icon: FileText },
   { name: "Operadores", href: "/operadores", icon: ShieldCheck },
+  { name: "Atividades", href: "/auditoria", icon: History },
 ];
 
 export function Sidebar() {
