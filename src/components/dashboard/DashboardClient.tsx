@@ -273,6 +273,9 @@ export default function DashboardClient({
   const [matriculasAbertas, setMatriculasAbertas] =
     useState(false);
 
+  const [alunosAbertos, setAlunosAbertos] =
+    useState(false);
+
   const [cursosAbertos, setCursosAbertos] =
     useState(false);
 
@@ -1021,6 +1024,46 @@ export default function DashboardClient({
   }, [matriculas]);
 
   /*
+   * RESUMO GERAL DE ALUNOS
+   * Total = todos os alunos cadastrados.
+   * Ativo = aluno com matrícula ativa em turma da grade semanal (tem curso agora).
+   * Inativo = aluno sem nenhum curso ativo no momento.
+   */
+  const resumoAlunos = useMemo(() => {
+    const cursosPorAluno = new Map<string, { curso: string; turma: string }[]>();
+
+    matriculasAtivasNaGrade.forEach((matricula) => {
+      const lista = cursosPorAluno.get(matricula.aluno_id) ?? [];
+      lista.push({
+        curso:
+          cursos.find((item) => item.id === matricula.curso_id)?.titulo ||
+          "Curso não informado",
+        turma:
+          pegarRelacao(matricula.turmas)?.nome ||
+          turmas.find((item) => item.id === matricula.turma_id)?.nome ||
+          "Turma não informada",
+      });
+      cursosPorAluno.set(matricula.aluno_id, lista);
+    });
+
+    const idsComMatricula = new Set(matriculas.map((matricula) => matricula.aluno_id));
+    const porNome = (a: Aluno, b: Aluno) =>
+      (a.nome_completo || "").localeCompare(b.nome_completo || "", "pt-BR");
+
+    const ativos = alunos
+      .filter((aluno) => cursosPorAluno.has(aluno.id))
+      .sort(porNome)
+      .map((aluno) => ({ aluno, cursos: cursosPorAluno.get(aluno.id) ?? [] }));
+
+    const inativos = alunos
+      .filter((aluno) => !cursosPorAluno.has(aluno.id))
+      .sort(porNome)
+      .map((aluno) => ({ aluno, semMatricula: !idsComMatricula.has(aluno.id) }));
+
+    return { ativos, inativos };
+  }, [alunos, matriculas, matriculasAtivasNaGrade, cursos, turmas]);
+
+  /*
    * TURMAS E CURSOS DA GRADE SEMANAL
    * Só conta o que aparece na grade semanal de Cursos e Turmas.
    */
@@ -1143,8 +1186,14 @@ export default function DashboardClient({
           <DashboardCard
             icon={Users}
             title="Alunos"
-            value={idsAlunosAtivosNaGrade.size}
-            description="Alunos ativos na grade"
+            value={alunos.length}
+            description={`${resumoAlunos.ativos.length} ativos · ${resumoAlunos.inativos.length} inativos`}
+            aberto={alunosAbertos}
+            onClick={() =>
+              setAlunosAbertos(
+                (valor) => !valor
+              )
+            }
           />
 
           <DashboardCard
@@ -1176,6 +1225,50 @@ export default function DashboardClient({
           />
 
         </div>
+
+        {/* DETALHAMENTO DOS ALUNOS */}
+        {alunosAbertos && (
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-bold text-slate-900">Alunos ativos e inativos</h2>
+                <p className="mt-1 text-xs text-slate-500">Ativo é o aluno que tem curso em andamento na grade semanal.</p>
+              </div>
+              <div className="flex gap-2 text-xs font-semibold">
+                <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">{resumoAlunos.ativos.length} ativos</span>
+                <span className="rounded-full bg-rose-50 px-3 py-1.5 text-rose-700">{resumoAlunos.inativos.length} inativos</span>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border border-emerald-200 p-4">
+                <h3 className="font-semibold text-emerald-800">Ativos ({resumoAlunos.ativos.length})</h3>
+                <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+                  {resumoAlunos.ativos.length ? resumoAlunos.ativos.map(({ aluno, cursos: cursosDoAluno }) => (
+                    <div key={aluno.id} className="rounded-lg bg-emerald-50/70 px-3 py-2 text-sm">
+                      <p className="font-medium text-slate-800">{aluno.nome_completo || "Aluno não identificado"}</p>
+                      {cursosDoAluno.map((item, indice) => (
+                        <p key={indice} className="text-xs text-slate-500">{item.curso} · {item.turma}</p>
+                      ))}
+                    </div>
+                  )) : <p className="text-sm text-slate-500">Nenhum aluno ativo encontrado.</p>}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-rose-200 p-4">
+                <h3 className="font-semibold text-rose-800">Inativos ({resumoAlunos.inativos.length})</h3>
+                <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+                  {resumoAlunos.inativos.length ? resumoAlunos.inativos.map(({ aluno, semMatricula }) => (
+                    <div key={aluno.id} className="rounded-lg bg-rose-50/70 px-3 py-2 text-sm">
+                      <p className="font-medium text-slate-800">{aluno.nome_completo || "Aluno não identificado"}</p>
+                      <p className="text-xs font-medium text-rose-700">{semMatricula ? "Nunca foi matriculado" : "Sem curso ativo no momento"}</p>
+                    </div>
+                  )) : <p className="text-sm text-slate-500">Nenhum aluno inativo encontrado.</p>}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* DETALHAMENTO DAS MATRÍCULAS */}
         {matriculasAbertas && (
