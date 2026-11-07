@@ -1401,35 +1401,7 @@ export default function DashboardClient({
         )}
 
         {/* SEGUNDA LINHA DE INDICADORES */}
-        <div className="mt-4 grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-          <SmallMetric
-            icon={UserPlus}
-            title="Alunos em mais de uma turma"
-            value={alunosEmMaisDeUmaTurma}
-            description={
-              idsAlunosAtivosNaGrade.size
-                ? `${percentual(
-                    alunosEmMaisDeUmaTurma,
-                    idsAlunosAtivosNaGrade.size
-                  )}% dos alunos ativos na grade`
-                : "Sem dados"
-            }
-            tone="purple"
-            aberto={multiplasTurmasAbertas}
-            onClick={() => {
-              const vaiAbrir = !multiplasTurmasAbertas;
-              setMultiplasTurmasAbertas(vaiAbrir);
-
-              if (vaiAbrir) {
-                setTimeout(() => {
-                  document
-                    .getElementById("alunos-multiplas-turmas")
-                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }, 50);
-              }
-            }}
-          />
+        <div className="mt-4 grid items-start gap-4 sm:grid-cols-3">
 
           <SmallMetric
             icon={CheckCircle2}
