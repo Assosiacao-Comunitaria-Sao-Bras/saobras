@@ -931,13 +931,21 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
                   const cursoColor = COLOR_THEMES[getColorForId(curso.id)];
 
                   return (
-                    <tr key={curso.id} className="hover:bg-slate-50 group">
-                      <td className="px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
-                        <div className={`w-3 h-3 rounded-full ${cursoColor.badge} border`} title="Cor de identificação do curso" />
-                        {curso.titulo}
+                    <tr key={curso.id} className="hover:bg-slate-50 group align-top">
+                      <td className="px-6 py-4 font-medium text-slate-900 min-w-[12rem]">
+                        <div className="flex items-start gap-3">
+                          <div className={`mt-1 w-3 h-3 shrink-0 rounded-full ${cursoColor.badge} border`} title="Cor de identificação do curso" />
+                          <span className="break-words">{curso.titulo}</span>
+                        </div>
                       </td>
-                      <td className="px-6 py-4 text-slate-500 max-w-md truncate">
-                        {curso.descricao || <span className="italic text-slate-400">Sem descrição</span>}
+                      <td className="px-6 py-4 min-w-[22rem] max-w-xl">
+                        {curso.descricao ? (
+                          <p className="whitespace-pre-line break-words text-sm leading-relaxed text-slate-700">
+                            {curso.descricao}
+                          </p>
+                        ) : (
+                          <span className="italic text-slate-400">Sem descrição</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-center text-slate-700">
                         {curso.carga_horaria ? `${curso.carga_horaria}h` : <span className="italic text-slate-400">—</span>}
@@ -1233,7 +1241,7 @@ export function CursosClient({ cursos, turmas: serverTurmas }: { cursos: Curso[]
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Descrição</label>
-                <textarea rows={3} value={editingCurso?.descricao || ""} onChange={e => setEditingCurso(prev => ({...prev, descricao: e.target.value}))} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"/>
+                <textarea rows={6} value={editingCurso?.descricao || ""} onChange={e => setEditingCurso(prev => ({...prev, descricao: e.target.value}))} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm leading-relaxed resize-y"/>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Carga Horária (horas)</label>
