@@ -20,7 +20,6 @@ import {
 
 const menuItems = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
-  { name: "Histórico de Clientes", href: "/historico", icon: FileText },
   { name: "Gestão de Alunos", href: "/alunos", icon: Users },
   { name: "Matrículas", href: "/matriculas", icon: GraduationCap },
   { name: "Frequência e Check-in", href: "/checkin", icon: CheckSquare },
