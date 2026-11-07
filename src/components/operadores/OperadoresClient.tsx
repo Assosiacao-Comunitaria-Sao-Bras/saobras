@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Plus, Edit2, Trash2, Search, X, Save, UserCheck, UserX, Shield } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Plus, Edit2, Trash2, Search, X, Save, UserCheck, UserX, Shield, KeyRound, Lock, Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
@@ -20,6 +20,86 @@ export default function OperadoresClient({ operadores }: { operadores: Operador[
   const [editingOperador, setEditingOperador] = useState<Partial<Operador> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Troca de senha (somente do operador que está logado)
+  const [emailLogado, setEmailLogado] = useState("");
+  const [senhaAtual, setSenhaAtual] = useState("");
+  const [novaSenha, setNovaSenha] = useState("");
+  const [confirmarSenha, setConfirmarSenha] = useState("");
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [erroSenha, setErroSenha] = useState<string | null>(null);
+  const [sucessoSenha, setSucessoSenha] = useState(false);
+  const [trocandoSenha, setTrocandoSenha] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setEmailLogado((data.user?.email ?? "").trim().toLowerCase());
+    });
+  }, []);
+
+  // O operador que está sendo editado é a própria pessoa logada?
+  const editandoAMimMesmo = useMemo(() => {
+    if (!editingOperador?.id || !emailLogado) return false;
+    const original = operadores.find((o) => o.id === editingOperador.id);
+    return (original?.email ?? "").trim().toLowerCase() === emailLogado;
+  }, [editingOperador?.id, operadores, emailLogado]);
+
+  const limparCamposSenha = () => {
+    setSenhaAtual("");
+    setNovaSenha("");
+    setConfirmarSenha("");
+    setMostrarSenha(false);
+    setErroSenha(null);
+    setSucessoSenha(false);
+  };
+
+  const handleTrocarSenha = async () => {
+    setErroSenha(null);
+    setSucessoSenha(false);
+
+    if (!senhaAtual) {
+      setErroSenha("Digite a senha atual.");
+      return;
+    }
+    if (novaSenha.length < 6) {
+      setErroSenha("A nova senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+    if (novaSenha !== confirmarSenha) {
+      setErroSenha("A confirmação não é igual à nova senha.");
+      return;
+    }
+    if (novaSenha === senhaAtual) {
+      setErroSenha("A nova senha precisa ser diferente da senha atual.");
+      return;
+    }
+
+    setTrocandoSenha(true);
+
+    // 1) Confere se a senha atual está correta
+    const { error: erroAtual } = await supabase.auth.signInWithPassword({
+      email: emailLogado,
+      password: senhaAtual,
+    });
+
+    if (erroAtual) {
+      setTrocandoSenha(false);
+      setErroSenha("Senha atual incorreta.");
+      return;
+    }
+
+    // 2) Troca pela nova senha
+    const { error: erroTroca } = await supabase.auth.updateUser({ password: novaSenha });
+    setTrocandoSenha(false);
+
+    if (erroTroca) {
+      setErroSenha(`Erro ao alterar a senha: ${erroTroca.message}`);
+      return;
+    }
+
+    limparCamposSenha();
+    setSucessoSenha(true);
+  };
+
   const operadoresFiltrados = useMemo(() => {
     if (!searchTerm) return operadores;
     const lower = searchTerm.toLowerCase();
@@ -31,11 +111,13 @@ export default function OperadoresClient({ operadores }: { operadores: Operador[
   }, [operadores, searchTerm]);
 
   const abrirNovoOperador = () => {
+    limparCamposSenha();
     setEditingOperador({ nome: "", email: "", telefone: "" });
     setIsModalOpen(true);
   };
 
   const abrirEdicao = (op: Operador) => {
+    limparCamposSenha();
     setEditingOperador({ ...op });
     setIsModalOpen(true);
   };
@@ -43,6 +125,7 @@ export default function OperadoresClient({ operadores }: { operadores: Operador[
   const fecharModal = () => {
     setIsModalOpen(false);
     setEditingOperador(null);
+    limparCamposSenha();
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -254,6 +337,73 @@ export default function OperadoresClient({ operadores }: { operadores: Operador[
                 />
               </div>
 
+
+              {editingOperador.id && editandoAMimMesmo && (
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-4 space-y-3">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <KeyRound className="w-4 h-4 text-blue-600" />
+                    Alterar minha senha
+                  </h3>
+
+                  {erroSenha && (
+                    <div className="p-2.5 text-sm text-red-600 bg-red-50 border border-red-100 rounded-md font-medium">
+                      {erroSenha}
+                    </div>
+                  )}
+                  {sucessoSenha && (
+                    <div className="p-2.5 text-sm text-green-700 bg-green-50 border border-green-100 rounded-md font-medium">
+                      Senha alterada com sucesso!
+                    </div>
+                  )}
+
+                  {[
+                    { label: "Senha atual", value: senhaAtual, set: setSenhaAtual, auto: "current-password", comOlho: true },
+                    { label: "Nova senha", value: novaSenha, set: setNovaSenha, auto: "new-password", comOlho: false },
+                    { label: "Confirmar nova senha", value: confirmarSenha, set: setConfirmarSenha, auto: "new-password", comOlho: false },
+                  ].map((campo) => (
+                    <div key={campo.label}>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">{campo.label}</label>
+                      <div className="relative">
+                        <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type={mostrarSenha ? "text" : "password"}
+                          value={campo.value}
+                          onChange={(e) => campo.set(e.target.value)}
+                          onKeyDown={(e) => {
+                            // Enter aqui troca a senha, e não salva o operador
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleTrocarSenha();
+                            }
+                          }}
+                          autoComplete={campo.auto}
+                          className="w-full pl-9 pr-10 py-2 bg-white border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-blue-500 text-sm transition-colors"
+                          placeholder="••••••••"
+                        />
+                        {campo.comOlho && (
+                          <button
+                            type="button"
+                            onClick={() => setMostrarSenha(!mostrarSenha)}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                            tabIndex={-1}
+                          >
+                            {mostrarSenha ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={handleTrocarSenha}
+                    disabled={trocandoSenha}
+                    className="px-4 py-2 text-sm font-medium text-white bg-slate-800 hover:bg-slate-900 rounded-md transition-colors disabled:opacity-50"
+                  >
+                    {trocandoSenha ? "Alterando..." : "Alterar senha"}
+                  </button>
+                </div>
+              )}
 
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
