@@ -4,6 +4,7 @@ import { Lock, Mail, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export function FormLogin() {
   const router = useRouter();
@@ -91,6 +92,12 @@ export function FormLogin() {
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
+      </div>
+
+      <div className="text-right -mt-2">
+        <Link href="/esqueci-senha" className="text-sm text-blue-600 hover:text-blue-700">
+          Esqueci minha senha
+        </Link>
       </div>
 
       <button
