@@ -15,6 +15,7 @@ import {
   FileDown,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { verificarVagaNaTurma } from "@/lib/vagas-turma";
 import { baixarFichaAposMatricula, baixarFichaPorMatricula } from "@/lib/ficha-inscricao";
 import { useRouter } from "next/navigation";
 import { AlunosOverview, StatusAlunoBadge } from "./AlunosOverview";
@@ -639,6 +640,18 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
         const operadorId = await getOperadorId();
 
         /*
+         * Limite de vagas: confere ANTES de criar o aluno.
+         */
+        if (formData.turma_id) {
+          const avisoLotada = await verificarVagaNaTurma(formData.turma_id);
+
+          if (avisoLotada) {
+            alert(avisoLotada);
+            return;
+          }
+        }
+
+        /*
          * 1. Criar aluno
          */
         const {
@@ -766,6 +779,21 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
             matriculaAtual.curso_id !== formData.curso_id ||
             (matriculaAtual.turma_id || null) !== (formData.turma_id || null)
           ) {
+            if (
+              formData.turma_id &&
+              (matriculaAtual.turma_id || null) !== formData.turma_id
+            ) {
+              const avisoLotada = await verificarVagaNaTurma(formData.turma_id);
+
+              if (avisoLotada) {
+                alert(
+                  avisoLotada +
+                    "\n\nOs dados do aluno foram salvos, mas a turma não foi alterada."
+                );
+                return;
+              }
+            }
+
             const {
               error: updateMatriculaError,
             } = await supabase
@@ -791,6 +819,18 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
         else {
           const operadorId =
             await getOperadorId();
+
+          if (formData.turma_id) {
+            const avisoLotada = await verificarVagaNaTurma(formData.turma_id);
+
+            if (avisoLotada) {
+              alert(
+                avisoLotada +
+                  "\n\nOs dados do aluno foram salvos, mas a matrícula não foi criada."
+              );
+              return;
+            }
+          }
 
           const {
             error: matriculaError,
