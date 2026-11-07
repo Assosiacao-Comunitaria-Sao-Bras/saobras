@@ -18,7 +18,7 @@ export default async function RelatoriosPage() {
     supabase.from("operadores").select("id, nome").order("nome"),
     supabase
       .from("matriculas")
-      .select(`id, aluno_id, curso_id, turma_id, data_matricula, alunos(nome_completo, cpf), cursos(titulo), turmas(nome)`)
+      .select(`id, aluno_id, curso_id, turma_id, data_matricula, encerrada_em, desistiu_em, alunos(nome_completo, cpf, status_estudante), cursos(titulo), turmas(nome, status, dias_semana, horario, turno, data_hora_inicio)`)
       .order("data_matricula", { ascending: false }),
   ]);
 
