@@ -787,6 +787,9 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
               }
             }
 
+            const turmaMudou =
+              (matriculaAtual.turma_id || null) !== (formData.turma_id || null);
+
             const {
               error: updateMatriculaError,
             } = await supabase
@@ -794,6 +797,9 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
               .update({
                 curso_id: formData.curso_id,
                 turma_id: formData.turma_id || null,
+                ...(turmaMudou
+                  ? { data_matricula: new Date().toISOString() }
+                  : {}),
               })
               .eq("id", matriculaAtual.id);
 
@@ -802,6 +808,14 @@ export function AlunosClient({ alunos, registrosFrequencia = [], erroFrequencia 
                 "Aluno atualizado, mas não foi possível alterar o curso: " +
                   updateMatriculaError.message
               );
+            }
+
+            // Trocou de turma: gera a nova ficha para imprimir e assinar.
+            if (turmaMudou && formData.turma_id) {
+              novaMatricula = {
+                alunoId: selectedAluno.id,
+                turmaId: formData.turma_id,
+              };
             }
           }
         }
