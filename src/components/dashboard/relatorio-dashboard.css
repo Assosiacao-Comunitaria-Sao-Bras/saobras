@@ -1,0 +1,72 @@
+.dashboard-bi .bi-report{display:grid;grid-template-columns:minmax(270px,330px) minmax(0,1fr);gap:22px;align-items:start}
+.dashboard-bi .bi-report-settings{background:var(--bi-surface);border:1px solid var(--bi-border);border-radius:18px;padding:23px;color:var(--bi-text)}
+.dashboard-bi .bi-report-heading{display:flex;align-items:flex-start;gap:11px;margin-bottom:24px}
+.dashboard-bi .bi-report-heading>svg{color:var(--bi-accent);margin-top:3px;flex-shrink:0}
+.dashboard-bi .bi-report h2{margin:0;font-size:17px;font-weight:750;line-height:1.4}
+.dashboard-bi .bi-report-heading p,.dashboard-bi .bi-report-preview-top p{margin:5px 0 0;color:var(--bi-muted);font-size:12px;line-height:1.6}
+.dashboard-bi .bi-report-field{display:block;font-size:12px;font-weight:650;margin:17px 0;color:var(--bi-text)}
+.dashboard-bi .bi-report-field input,.dashboard-bi .bi-report-field select{display:block;width:100%;margin-top:7px;min-height:43px;border:1px solid var(--bi-border);border-radius:9px;background:var(--bi-surface);color:var(--bi-text);padding:10px;font:inherit;font-size:13px;outline-offset:3px}
+.dashboard-bi .bi-report fieldset{border:0;padding:20px 0 0;margin:0 0 18px;border-top:1px solid var(--bi-border);min-width:0}
+.dashboard-bi .bi-report legend{font-size:12px;font-weight:750;padding:0 8px 0 0;color:var(--bi-text)}
+.dashboard-bi .bi-report-choice{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;cursor:pointer;font-size:12px;color:var(--bi-text)}
+.dashboard-bi .bi-report-choice input{accent-color:var(--bi-accent);width:16px;height:16px;flex-shrink:0;margin-top:2px}
+.dashboard-bi .bi-report-choice strong{display:block;font-weight:650;font-size:13px}
+.dashboard-bi .bi-report-choice small{display:block;font-size:11px;line-height:1.55;margin-top:3px;color:var(--bi-muted)}
+.dashboard-bi .bi-report-choice-compact{align-items:center;margin-bottom:12px}
+.dashboard-bi .bi-report-note{font-size:11px;line-height:1.6;color:var(--bi-muted);margin:12px 0 0}
+.dashboard-bi .bi-report button,.dashboard-bi .bi-report-preview-options a{font:inherit;cursor:pointer;min-height:38px;padding:9px 12px;border:1px solid var(--bi-border);border-radius:9px;background:var(--bi-surface);color:var(--bi-text);font-size:12px;font-weight:650;display:inline-flex;align-items:center;justify-content:center;gap:7px;text-decoration:none}
+.dashboard-bi .bi-report button:disabled{opacity:.45;cursor:not-allowed}
+.dashboard-bi .bi-report button:focus-visible,.dashboard-bi .bi-report a:focus-visible,.dashboard-bi .bi-report input:focus-visible,.dashboard-bi .bi-report select:focus-visible{outline:2px solid var(--bi-accent);outline-offset:3px}
+.dashboard-bi .bi-report-actions>button{width:100%;margin-bottom:9px}
+.dashboard-bi .bi-report-actions>div{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dashboard-bi .bi-report .bi-report-primary{background:var(--bi-accent);border-color:var(--bi-accent);color:var(--bi-accent-ink,#10243e);min-height:44px}
+.dashboard-bi .bi-report-warning{font-size:12px;color:#c87512;line-height:1.5;margin:12px 0}
+.dashboard-bi .bi-report-preview{min-width:0;border:1px solid var(--bi-border);border-radius:18px;padding:20px;background:var(--bi-grid,var(--bi-surface));color:var(--bi-text)}
+.dashboard-bi .bi-report-preview-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px}
+.dashboard-bi .bi-report-eyebrow{font-size:10px;letter-spacing:1.4px;font-weight:750;color:var(--bi-muted)}
+.dashboard-bi .bi-report-preview-options{display:flex;flex-wrap:wrap;gap:6px}
+.dashboard-bi .bi-report-paper{background:#fff;color:#233b57;border:1px solid #dbe3ed;border-radius:3px;padding:32px;box-shadow:0 8px 35px #07182b10}
+.dashboard-bi .bi-report-paper header{border-bottom:3px solid #ffcf32;padding-bottom:18px;margin-bottom:24px}
+.dashboard-bi .bi-report-paper header>span{font-size:9px;letter-spacing:1.1px;color:#52718e;font-weight:750}
+.dashboard-bi .bi-report-paper header h2{font-size:23px;margin:12px 0 8px;color:#17376a;overflow-wrap:anywhere}
+.dashboard-bi .bi-report-paper header p{font-size:10px;color:#63748a;margin:0}
+.dashboard-bi .bi-report-paper h3{font-size:13px;font-weight:750;margin:0 0 10px;color:#17376a}
+.dashboard-bi .bi-report-applied{font-size:10px;line-height:1.7;margin-bottom:24px;padding:15px;background:#f4f7fb;border-radius:6px;color:#586c84}
+.dashboard-bi .bi-report-applied ul{margin:0;padding-left:15px;list-style:disc}
+.dashboard-bi .bi-report-applied p{margin:10px 0 0}
+.dashboard-bi .bi-report-chart{border:1px solid #dfe7f1;padding:17px;border-radius:8px;margin:18px 0 25px}
+.dashboard-bi .bi-report-chart>p{font-size:10px;color:#60748b;line-height:1.6;margin:0 0 10px}
+.dashboard-bi .bi-report-legend{display:flex;gap:16px;font-size:10px;color:#60748b;margin:12px 0}
+.dashboard-bi .bi-report-legend span{display:flex;align-items:center;gap:5px}
+.dashboard-bi .bi-report-legend i{height:8px;width:8px;border-radius:2px}
+.dashboard-bi .bi-report-bar{margin-top:13px}
+.dashboard-bi .bi-report-bar>div:first-child{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:10px;margin-bottom:5px;color:#52677e}
+.dashboard-bi .bi-report-bar strong{font-weight:600;color:#233b57}
+.dashboard-bi .bi-report-bar>div:last-child{height:8px;background:#edf2f8;display:flex;overflow:hidden;border-radius:3px}
+.dashboard-bi .bi-report-bar i{height:100%;display:block}
+.dashboard-bi .bi-report-table-section{margin:26px 0}
+.dashboard-bi .bi-report-table-title{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+.dashboard-bi .bi-report-table-title h3{margin:0}
+.dashboard-bi .bi-report-table-title>span{font-size:10px;color:#647890}
+.dashboard-bi .bi-report-table-scroll{overflow:auto;border:1px solid #e0e7ef;border-radius:5px;max-height:700px}
+.dashboard-bi .bi-report-paper table{border-collapse:collapse;width:100%;min-width:450px;font-size:10px;background:#fff;color:#233b57}
+.dashboard-bi .bi-report-paper th{padding:10px;text-align:left;background:#17376a;color:#fff;white-space:normal;font-size:9px;letter-spacing:0;text-transform:none}
+.dashboard-bi .bi-report-paper td{padding:9px 10px;border-bottom:1px solid #e7edf4;color:#233b57;vertical-align:top;overflow-wrap:anywhere;max-width:250px}
+.dashboard-bi .bi-report-paper tbody tr:nth-child(even){background:#f5f8fc}
+.dashboard-bi .bi-report-paper tbody tr:hover{background:#eef4fb}
+.dashboard-bi .bi-report-pagination{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:10px;color:#637890;margin-top:10px}
+.dashboard-bi .bi-report-pagination>div{display:flex;align-items:center;gap:8px}
+.dashboard-bi .bi-report-pagination button{background:#fff;border-color:#d8e1ed;color:#284768;min-height:28px;padding:4px}
+.dashboard-bi .bi-report-paper footer{font-size:9px;color:#75869a;border-top:1px solid #dfe7f1;padding-top:16px;margin-top:30px}
+.dashboard-bi .bi-report-empty{text-align:center;padding:90px 30px;color:var(--bi-muted);min-height:440px}
+.dashboard-bi .bi-report-empty>svg{margin:0 auto 15px;opacity:.6}
+.dashboard-bi .bi-report-empty h3{font-size:17px;color:var(--bi-text);margin:0 0 8px}
+.dashboard-bi .bi-report-empty p{max-width:360px;margin:auto;font-size:13px;line-height:1.7}
+.dashboard-bi .bi-report-pdf iframe{width:100%;height:850px;max-height:85vh;border:1px solid var(--bi-border);border-radius:8px;background:#fff}
+.dashboard-bi .bi-report-pdf p{font-size:12px;color:var(--bi-muted);margin:10px 0 0}
+.dashboard-bi .bi-report-pdf a{color:var(--bi-accent);text-decoration:underline}
+.dashboard-bi .bi-report-spin{animation:bi-report-rotate 1s linear infinite}
+@keyframes bi-report-rotate{to{transform:rotate(360deg)}}
+@media(max-width:1100px){.dashboard-bi .bi-report{grid-template-columns:minmax(240px,290px) minmax(0,1fr)}.dashboard-bi .bi-report-paper{padding:20px}.dashboard-bi .bi-report-preview{padding:14px}}
+@media(max-width:850px){.dashboard-bi .bi-report{grid-template-columns:minmax(0,1fr)}.dashboard-bi .bi-report-settings{padding:20px}.dashboard-bi .bi-report-preview{padding:12px}.dashboard-bi .bi-report-paper{padding:18px}.dashboard-bi .bi-report-paper header h2{font-size:20px}}
+@media(prefers-reduced-motion:reduce){.dashboard-bi .bi-report-spin{animation:none}}

@@ -11,7 +11,6 @@ import {
   LogOut,
   GraduationCap,
   ShieldCheck,
-  FileText,
   Home,
   Menu,
   History,
@@ -19,12 +18,11 @@ import {
 } from "lucide-react";
 
 const menuItems = [
-  { name: "Dashboard", href: "/dashboard", icon: Home },
+  { name: "Dashboard Interativo", href: "/dashboard", icon: Home },
   { name: "Gestão de Alunos", href: "/alunos", icon: Users },
   { name: "Matrículas", href: "/matriculas", icon: GraduationCap },
   { name: "Frequência e Check-in", href: "/checkin", icon: CheckSquare },
   { name: "Cursos e Turmas", href: "/cursos", icon: BookOpen },
-  { name: "Relatórios", href: "/relatorios", icon: FileText },
   { name: "Operadores", href: "/operadores", icon: ShieldCheck },
   { name: "Atividades", href: "/auditoria", icon: History },
 ];
